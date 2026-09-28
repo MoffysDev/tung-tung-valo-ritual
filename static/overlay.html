@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <title>Tung Tung Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/overlay.css">
+</head>
+<body>
+  <header class="bar pywebview-drag-region">
+    <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 5h8l7 14-4 8zM29 5h-8l-5 10 4 8z" fill="currentColor"/></svg>Tung Tung</span>
+    <div class="tabs">
+      <button type="button" data-team="enemy" class="active">En face</button>
+      <button type="button" data-team="ally">Mon équipe</button>
+    </div>
+    <button type="button" class="close" id="close" title="Masquer jusqu'au prochain match">&times;</button>
+  </header>
+  <div class="sub" id="sub">En attente d'une partie…</div>
+  <main id="list"></main>
+  <footer class="foot">Stats sur leurs 3 dernières parties · clique-glisse la barre pour déplacer</footer>
+  <script type="module" src="/static/js/overlay.js"></script>
+</body>
+</html>

@@ -16,7 +16,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 ".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check -r requirements.txt || goto :error
 rem Fenetre native optionnelle : sans pywebview, l'app s'ouvre dans le navigateur.
-".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check pywebview >nul 2>nul
+".venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check pywebview pystray pillow >nul 2>nul
 ".venv\Scripts\python.exe" app.py %*
 exit /b 0
 

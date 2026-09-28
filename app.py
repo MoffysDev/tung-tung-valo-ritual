@@ -2,7 +2,9 @@
 
     python app.py                  ouvre l'app dans sa propre fenêtre (pywebview) ou le navigateur
     python app.py --browser        force l'ouverture dans le navigateur
-    python app.py [--port 5000] [--data db] [--offline] [--no-browser] [--verbose]
+    python app.py [--port 5000] [--data db] [--offline] [--minimized] [--no-browser] [--verbose]
+
+Fermer la fenêtre garde le tracker actif dans la zone de notification (clic droit sur l icône > Quitter).
 
 Compilé avec build.bat, le même code donne TungTungTracker.exe.
 """
@@ -19,6 +21,7 @@ import webbrowser
 from werkzeug.serving import make_server
 
 from tracker import __version__
+from tracker.desktop import SingleInstance
 from tracker.server import create_app
 from tracker.static_data import StaticData
 from tracker.storage import Store
@@ -64,14 +67,102 @@ def setup_logging(data_dir: str, verbose: bool) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
-def open_window(url: str) -> bool:
-    """Show the app in a native window. Returns False when pywebview isn't available."""
+def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overlay_preview: bool = False) -> bool:
+    """Native window + tray icon. Closing the window keeps the tracker running in the tray.
+    Returns False when pywebview isn't available (the caller falls back to the browser)."""
     try:
         import webview
     except ImportError:
         return False
-    webview.create_window(TITLE, url, width=1600, height=960, min_size=(1100, 700), background_color="#080e14")
-    webview.start()  # blocks until the window is closed
+    from tracker.desktop import Tray, start_recap_watcher
+
+    quitting = threading.Event()
+    holder: dict = {}
+
+    def show():
+        window = holder.get("window")
+        if window:
+            window.show()
+            window.restore()
+
+    def quit_app():
+        quitting.set()
+        for key in ("overlay", "window"):  # webview.start() returns once every window is gone
+            if holder.get(key):
+                holder[key].destroy()
+
+    # ---- in-game overlay: a separate always-on-top window, never touches the game process
+    meta = tracker.store.data["meta"]
+    overlay_state = {"visible": False, "dismissed": None, "forced": False}
+
+    def overlay_enabled() -> bool:
+        return meta.get("overlay", True)
+
+    def toggle_overlay():
+        meta["overlay"] = not overlay_enabled()
+        tracker.store.mark("meta")
+
+    def show_overlay():
+        overlay_state["forced"] = True
+        overlay_state["dismissed"] = None
+
+    def hide_overlay():
+        live = tracker.live
+        overlay_state["dismissed"] = live["match_id"] if live else "menus"
+        overlay_state["forced"] = False
+
+    tray = Tray(TITLE, on_open=show, on_sync=tracker.request_sync, on_quit=quit_app,
+                overlay={"enabled": overlay_enabled, "toggle": toggle_overlay, "show": show_overlay})
+    has_tray = tray.start()
+    logging.getLogger("app").info("icône de notification : %s", "active" if has_tray else "indisponible")
+    hooks["show"] = show
+    hooks["overlay_hide"] = hide_overlay
+    window = webview.create_window(TITLE, url, width=1600, height=960, min_size=(1100, 700),
+                                   background_color="#080e14", hidden=minimized and has_tray)
+    holder["window"] = window
+
+    def on_closing():
+        logging.getLogger("app").info("fermeture demandée (icône: %s, quitter: %s)", has_tray, quitting.is_set())
+        if quitting.is_set() or not has_tray:
+            return True
+        # Hiding from inside the closing event is ignored by the GUI toolkit: do it right after.
+        threading.Timer(0.05, window.hide).start()
+        tray.went_to_background()
+        return False
+
+    window.events.closing += on_closing
+    overlay = webview.create_window("Tung Tung Overlay", f"{url}/overlay", width=470, height=580, x=16, y=140,
+                                    frameless=True, on_top=True, hidden=True, resizable=True,
+                                    min_size=(380, 260), background_color="#080e14")
+    holder["overlay"] = overlay
+
+    def overlay_loop():
+        """Show the overlay while a match is live (unless dismissed for that match)."""
+        while not quitting.is_set():
+            live = tracker.live
+            key = live["match_id"] if live else "menus"
+            wanted = (overlay_state["forced"] or (live is not None and overlay_enabled())) and overlay_state["dismissed"] != key
+            if wanted != overlay_state["visible"]:
+                try:
+                    overlay.show() if wanted else overlay.hide()
+                    overlay_state["visible"] = wanted
+                except Exception:  # window not ready yet
+                    pass
+            if live is None and overlay_state["dismissed"] not in (None, "menus"):
+                overlay_state["dismissed"] = None  # next match shows it again
+            quitting.wait(1.5)
+
+    if overlay_preview:
+        show_overlay()
+    threading.Thread(target=overlay_loop, name="overlay", daemon=True).start()
+    stop_watch = threading.Event()
+    if has_tray:
+        start_recap_watcher(tracker, tray, stop_watch)
+    try:
+        webview.start()  # blocks until the window is really closed (Quitter)
+    finally:
+        stop_watch.set()
+        tray.stop()
     return True
 
 
@@ -82,8 +173,17 @@ def main() -> None:
     parser.add_argument("--browser", action="store_true", help="ouvrir dans le navigateur plutôt qu'une fenêtre")
     parser.add_argument("--no-browser", action="store_true", help="serveur seul, sans rien ouvrir")
     parser.add_argument("--offline", action="store_true", help="consulter la base sans contacter Riot")
+    parser.add_argument("--minimized", action="store_true", help="démarrer réduit dans la zone de notification")
+    parser.add_argument("--overlay-preview", action="store_true", help="afficher l'overlay dès le lancement (pour le placer)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
+
+    # One tracker at a time: a second launch just brings the running window back.
+    instance = SingleInstance(args.data)
+    if not instance.acquire():
+        if not instance.wake_existing():
+            print("Tung Tung Tracker est déjà lancé.", file=sys.stderr)
+        return
 
     setup_logging(args.data, args.verbose)
     log = logging.getLogger("app")
@@ -97,7 +197,10 @@ def main() -> None:
         tracker.start()
 
     port = free_port(args.port)
-    server = make_server("127.0.0.1", port, create_app(tracker, os.path.join(BUNDLE, "static")), threaded=True)
+    hooks: dict = {}
+    app = create_app(tracker, os.path.join(BUNDLE, "static"), hooks)
+    server = make_server("127.0.0.1", port, app, threaded=True)
+    instance.publish(port)
     url = f"http://127.0.0.1:{port}"
     log.info("Tung Tung Tracker v%s -> %s", __version__, url)
 
@@ -106,7 +209,8 @@ def main() -> None:
     try:
         if args.no_browser:
             serving.join()
-        elif args.browser or not open_window(url):
+        elif args.browser or not open_window(url, tracker, hooks, args.minimized, args.overlay_preview):
+            hooks["show"] = lambda: webbrowser.open(url)
             threading.Timer(1.0, webbrowser.open, args=(url,)).start()
             print(f"\n  {TITLE} v{__version__}\n  -> {url}\n  (Ctrl+C pour quitter)\n", flush=True)
             while serving.is_alive():

@@ -4,9 +4,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import OrderedDict
 
 from . import constants as C
-from .parser import MATCH_VERSION, parse_live_loadouts, parse_match, parse_mmr, parse_own_loadout
+from .parser import MATCH_VERSION, parse_live_loadouts, parse_match, parse_mmr, parse_own_loadout, player_line, summarize_recent
 from .riot import NotRunning, RateLimited, RiotClient, RiotError, decode_presence, presence_party, presence_phase
 from .static_data import StaticData
 from .storage import Store
@@ -46,6 +47,8 @@ class Tracker:
         self._season_starts: dict[str, int] = {}
         self._player_cache: dict[str, tuple[float, dict]] = {}
         self._name_cache: dict[str, str] = {}
+        self._recent_cache: dict[str, tuple[float, dict | None]] = {}  # puuid -> recent form of live players
+        self._details_cache: OrderedDict[str, dict] = OrderedDict()   # match details shared between players
         self._season_name: str | None = None
         self._season_names: dict[str, str] = {}
         self._live_fetched: dict[str, float] = {}
@@ -172,6 +175,7 @@ class Tracker:
 
         if phase in ("PREGAME", "INGAME"):
             self._update_live(phase, presences, decoded)
+            self._fill_recent()
         elif self.live:
             with self._lock:
                 self.live = None
@@ -424,6 +428,8 @@ class Tracker:
                 p["party"] = party_ids.setdefault(party, len(party_ids) + 1)
                 p["my_party"] = party == my_party
             p["encounters"] = encounters.get(pid)
+            cached_recent = self._recent_cache.get(pid)
+            p["recent"] = cached_recent[1] if cached_recent else None
             if p["name"] and not p["is_me"]:
                 entry = known.setdefault(pid, {})
                 before = dict(entry)
@@ -447,6 +453,55 @@ class Tracker:
             }
             self.revision += 1
         self._live_fetched[key] = now
+
+    # ------------------------------------------------------------------ live players' recent form
+    RECENT_GAMES = 3
+    RECENT_TTL = 1800
+    SKIP_QUEUES = {"deathmatch", "hurm", "custom", "ggteam", "snowball"}
+
+    def _fill_recent(self) -> None:
+        """Fetch the last games of the players of the live match, enemies first (for the overlay)."""
+        live = self.live
+        if not live:
+            return
+        now = time.time()
+        todo = [p for p in sorted(live["players"], key=lambda p: p["is_ally"])
+                if not p["is_me"] and now - self._recent_cache.get(p["puuid"], (0, None))[0] > self.RECENT_TTL]
+        for player in todo[:2]:  # ~2 players per tick keeps well under Riot's rate limit
+            stats = self._recent_of(player["puuid"], live.get("queue") or "")
+            self._recent_cache[player["puuid"]] = (time.time(), stats)
+            with self._lock:
+                if self.live is not live:
+                    return
+                for p in live["players"]:
+                    if p["puuid"] == player["puuid"]:
+                        p["recent"] = stats
+                live["updated"] = int(time.time() * 1000)
+                self.revision += 1
+
+    def _recent_of(self, puuid: str, queue: str) -> dict | None:
+        history = (self.riot.match_history(0, 8, puuid=puuid) or {}).get("History") or []
+        entries = [e for e in history if (e.get("QueueID") or "").lower() not in self.SKIP_QUEUES and e.get("MatchID")]
+        same = [e for e in entries if (e.get("QueueID") or "").lower() == queue]
+        picked = (same if len(same) >= 2 else entries)[: self.RECENT_GAMES]
+        lines = []
+        for i, entry in enumerate(picked):
+            mid = entry["MatchID"].lower()
+            details = self._details_cache.get(mid)
+            if details is None:
+                if i:
+                    self._stop.wait(C.DETAILS_SPACING)
+                try:
+                    details = self.riot.match_details(mid) or {}
+                except RateLimited:
+                    raise
+                except RiotError:
+                    details = {}
+                self._details_cache[mid] = details
+                while len(self._details_cache) > 40:
+                    self._details_cache.popitem(last=False)
+            lines.append(player_line(details, puuid) if details else None)
+        return summarize_recent(lines)
 
     def _encounters(self, puuids: set[str]) -> dict:
         """How many recorded matches you've shared with each player."""

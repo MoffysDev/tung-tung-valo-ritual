@@ -57,3 +57,16 @@ def test_index_and_static_served(client):
     assert b"Tung Tung Tracker" in client.get("/").data
     assert client.get("/static/js/main.js").status_code == 200
     assert client.get("/static/../app.py").status_code == 404
+
+
+def test_overlay_page_and_hooks(tmp_path):
+    calls = []
+    store = Store(str(tmp_path / "db"))
+    app = create_app(Tracker(store, ServedStatic(), FakeRiot()), STATIC,
+                     {"show": lambda: calls.append("show"), "overlay_hide": lambda: calls.append("hide")})
+    client = app.test_client()
+    assert b"Tung Tung Overlay" in client.get("/overlay").data
+    assert client.post("/api/show", headers={"X-Tracker": "1"}).status_code == 200
+    assert client.post("/api/overlay/hide", headers={"X-Tracker": "1"}).status_code == 200
+    assert client.post("/api/overlay/hide").status_code == 403  # needs our header
+    assert calls == ["show", "hide"]

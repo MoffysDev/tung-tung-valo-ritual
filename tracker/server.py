@@ -14,7 +14,9 @@ from .worker import Tracker
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
 
-def create_app(tracker: Tracker, static_dir: str) -> Flask:
+def create_app(tracker: Tracker, static_dir: str, hooks: dict | None = None) -> Flask:
+    """``hooks`` lets the desktop shell react to the page: {"show": fn, "overlay_hide": fn}."""
+    hooks = hooks if hooks is not None else {}
     app = Flask(__name__, static_folder=None)
     # Version counters restart at 0 with the process: prefix ETags so browser caches never collide.
     boot = uuid.uuid4().hex[:8]
@@ -63,6 +65,10 @@ def create_app(tracker: Tracker, static_dir: str) -> Flask:
     def index():
         return send_from_directory(static_dir, "index.html")
 
+    @app.get("/overlay")
+    def overlay():
+        return send_from_directory(static_dir, "overlay.html")
+
     @app.get("/static/<path:path>")
     def static_files(path: str):
         res = send_from_directory(static_dir, path)
@@ -102,6 +108,17 @@ def create_app(tracker: Tracker, static_dir: str) -> Flask:
     @app.post("/api/sync")
     def sync():
         tracker.request_sync()
+        return json_response({"ok": True})
+
+    @app.post("/api/show")
+    def show():
+        """Used by a second launch of the exe to bring the running window to the front."""
+        hooks.get("show", lambda: None)()
+        return json_response({"ok": True})
+
+    @app.post("/api/overlay/hide")
+    def overlay_hide():
+        hooks.get("overlay_hide", lambda: None)()
         return json_response({"ok": True})
 
     @app.post("/api/backfill")

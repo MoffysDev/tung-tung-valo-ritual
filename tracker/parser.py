@@ -390,3 +390,53 @@ def parse_mmr(data: dict, current_season: str | None, season_starts: dict[str, i
     acts.sort(key=lambda a: a["start"] or 0)
     peak = max(peak, tier)
     return {"tier": tier, "rr": rr, "peak": peak, "peak_season": peak_season, "act_games": games, "act_wins": wins, "acts": acts}
+
+
+# ---------------------------------------------------------------------- other players' recent form
+def player_line(data: dict, puuid: str) -> dict | None:
+    """One player's line in a match (for the live overlay): K/D/A, ACS, HS%, result, agent."""
+    puuid = puuid.lower()
+    info = data.get("matchInfo") or {}
+    players = data.get("players") or []
+    p = next((x for x in players if _low(x.get("subject")) == puuid), None)
+    if not p:
+        return None
+    st = p.get("stats") or {}
+    rounds = int(st.get("roundsPlayed") or len(data.get("roundResults") or []) or 1)
+    hs = hits = 0
+    for rd in data.get("roundResults") or []:
+        for ps in rd.get("playerStats") or []:
+            if _low(ps.get("subject")) != puuid:
+                continue
+            for d in ps.get("damage") or []:
+                hs += int(d.get("headshots") or 0)
+                hits += int(d.get("headshots") or 0) + int(d.get("bodyshots") or 0) + int(d.get("legshots") or 0)
+    team = next((t for t in data.get("teams") or [] if t.get("teamId") == p.get("teamId")), {})
+    return {
+        "queue": queue_of(info),
+        "agent": _low(p.get("characterId")),
+        "won": bool(team.get("won")),
+        "k": int(st.get("kills") or 0), "d": int(st.get("deaths") or 0), "a": int(st.get("assists") or 0),
+        "acs": round(int(st.get("score") or 0) / max(rounds, 1)),
+        "hs": hs, "hits": hits,
+    }
+
+
+def summarize_recent(lines: list[dict]) -> dict | None:
+    lines = [x for x in lines if x]
+    if not lines:
+        return None
+    n = len(lines)
+    k, d, a = (sum(x[key] for x in lines) for key in ("k", "d", "a"))
+    hits = sum(x["hits"] for x in lines)
+    agents = Counter(x["agent"] for x in lines)
+    return {
+        "games": n,
+        "wins": sum(x["won"] for x in lines),
+        "k": round(k / n, 1), "d": round(d / n, 1), "a": round(a / n, 1),
+        "kd": round(k / max(d, 1), 2),
+        "acs": round(sum(x["acs"] for x in lines) / n),
+        "hs": round(sum(x["hs"] for x in lines) / hits * 100) if hits else None,
+        "agent": agents.most_common(1)[0][0],
+        "results": "".join("V" if x["won"] else "D" for x in lines),
+    }

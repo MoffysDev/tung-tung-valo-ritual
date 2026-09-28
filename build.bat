@@ -13,7 +13,7 @@ if not exist ".venv-build\Scripts\python.exe" (
     %PY% -m venv .venv-build || goto :error
 )
 set VPY=.venv-build\Scripts\python.exe
-%VPY% -m pip install -q --disable-pip-version-check -r requirements.txt pywebview pyinstaller pillow || goto :error
+%VPY% -m pip install -q --disable-pip-version-check -r requirements.txt pywebview pystray pyinstaller pillow || goto :error
 %VPY% tools\make_icon.py || goto :error
 
 %VPY% -m PyInstaller --noconfirm --clean --onefile --windowed ^
@@ -21,6 +21,7 @@ set VPY=.venv-build\Scripts\python.exe
     --icon tools\icon.ico ^
     --add-data "static;static" ^
     --collect-submodules webview ^
+    --collect-submodules pystray ^
     app.py || goto :error
 
 echo.

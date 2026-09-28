@@ -42,6 +42,7 @@ class FakeRiot:
         self.history = []
         self.details = {}
         self.name_calls = []
+        self.other_history = {}
         self.fallback_version = None
 
     def connect(self):
@@ -65,7 +66,9 @@ class FakeRiot:
     def content(self):
         return {"Seasons": []}
 
-    def match_history(self, start=0, end=20):
+    def match_history(self, start=0, end=20, puuid=None):
+        if puuid and puuid != self.puuid:
+            return {"History": [{"MatchID": m, "QueueID": q} for m, q in self.other_history.get(puuid, [])]}
         return {"History": [{"MatchID": m} for m in self.history[start:end]], "Total": len(self.history)}
 
     def match_details(self, match_id):
@@ -230,3 +233,15 @@ def test_recap_event_for_a_fresh_match(setup):
     riot.details = {"OLD": details("OLD", 1000)}
     tracker._sync_history()
     assert len([e for e in tracker.events if e["kind"] == "recap"]) == 1
+
+
+def test_recent_form_of_a_live_player(setup):
+    store, riot, tracker = setup
+    riot.other_history = {"ally": [("R1", "competitive"), ("DM", "deathmatch"), ("R2", "competitive")]}
+    riot.details = {"R1": make_match(), "R2": make_match()}
+    recent = tracker._recent_of("ally", "competitive")
+    # ally: 1/2/2 with 400 score over 3 rounds, Blue won, deathmatch ignored
+    assert recent["games"] == 2 and recent["wins"] == 2 and recent["results"] == "VV"
+    assert (recent["k"], recent["d"], recent["a"], recent["kd"], recent["acs"]) == (1, 2, 2, 0.5, 133)
+    assert recent["agent"] == "agent-b"
+    assert tracker._recent_of("nobody", "competitive") is None

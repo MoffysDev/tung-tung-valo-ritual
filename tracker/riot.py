@@ -285,8 +285,8 @@ class RiotClient:
             "GET", self.pd(f"/mmr/v1/players/{self.puuid}/competitiveupdates?startIndex=0&endIndex={count}&queue=competitive")
         )
 
-    def match_history(self, start: int = 0, end: int = 20):
-        return self._remote("GET", self.pd(f"/match-history/v1/history/{self.puuid}?startIndex={start}&endIndex={end}"))
+    def match_history(self, start: int = 0, end: int = 20, puuid: str | None = None):
+        return self._remote("GET", self.pd(f"/match-history/v1/history/{puuid or self.puuid}?startIndex={start}&endIndex={end}"))
 
     def match_details(self, match_id: str):
         return self._remote("GET", self.pd(f"/match-details/v1/matches/{match_id}"))
