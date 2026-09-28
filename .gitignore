@@ -1,3 +1,25 @@
-database.json.bak
+# Données personnelles (matchs, pseudos, loadouts) : ne jamais les commit
 db/
+database.json
+database.json.bak
+
+# Python
 __pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Node (tests JS uniquement)
+node_modules/
+
+# Outils
+.claude/
+
+# Build de l'exe
+.venv-build/
+build/
+dist/
+*.spec
+tools/icon.ico
+

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Tung Tung Tracker</title>
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="bg-grid"></div><div class="bg-glow"></div></div>
+
+  <aside class="sidebar">
+    <a class="brand" href="#/dashboard" aria-label="Accueil">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 5h8l7 14-4 8zM29 5h-8l-5 10 4 8z" fill="currentColor"/></svg>
+      <span class="brand-text">TUNG TUNG<em>TRACKER</em></span>
+    </a>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#/dashboard" data-tab="dashboard">
+        <svg viewBox="0 0 24 24"><path d="M4 13h6V4H4zm0 7h6v-5H4zm10 0h6v-9h-6zm0-16v5h6V4z"/></svg>
+        <span>Dashboard</span><kbd>1</kbd>
+      </a>
+      <a href="#/history" data-tab="history">
+        <svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 1-7.4 5H2l3.5-4L9 9H6.7A6 6 0 1 0 12 6zm-1 3h2v5l4 2.3-1 1.7-5-3z"/></svg>
+        <span>Historique</span><kbd>2</kbd>
+      </a>
+      <a href="#/agents" data-tab="agents">
+        <svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 2 8 4.5V21H4v-3.5C4 15 7.6 13 12 13z"/></svg>
+        <span>Agents</span><kbd>3</kbd>
+      </a>
+      <a href="#/locker" data-tab="locker">
+        <svg viewBox="0 0 24 24"><path d="M2 10h14l2-2h4v3h-3l-1 2h-3l-1 5H9l1-5H4l-2-1z"/></svg>
+        <span>Casier</span><kbd>4</kbd>
+      </a>
+      <a href="#/live" data-tab="live" class="nav-live" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8l1.4-1.4a7 7 0 0 1 0-10zm12.8 0-1.4 1.4a7 7 0 0 1 0 10l1.4 1.4a9 9 0 0 0 0-12.8z"/></svg>
+        <span>Match en direct</span><kbd>5</kbd>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <div class="conn" id="conn" data-state="offline">
+        <div class="conn-row"><span class="conn-dot"></span><span class="conn-label" id="conn-label">Connexion…</span></div>
+        <div class="conn-sub" id="conn-sub">&nbsp;</div>
+        <button type="button" class="conn-btn" id="btn-sync">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 1 7.7 6h-2.1A6 6 0 0 0 7.8 7.8L10 10H4V4l2.4 2.4A8 8 0 0 1 12 4zm-7.7 10h2.1a6 6 0 0 0 9.8 2.2L14 14h6v6l-2.4-2.4A8 8 0 0 1 4.3 14z"/></svg>
+          Synchroniser
+        </button>
+      </div>
+      <div class="side-actions">
+        <button class="side-btn" id="btn-settings" type="button" aria-haspopup="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-2.5.1-1-.1-1 2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11l-.1 1 .1 1-2 1.6 2 3.4 2.4-1c.5.4 1.1.8 1.7 1L11 21h4l.3-2.5c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          Réglages
+        </button>
+        <span class="side-version" id="app-version"></span>
+      </div>
+      <div class="menu" id="settings-menu" hidden>
+        <label class="switch"><input type="checkbox" id="opt-streamer"><span>Mode streamer <small>masque ton pseudo partout</small></span></label>
+        <label class="switch"><input type="checkbox" id="opt-motion"><span>Réduire les animations</span></label>
+        <button type="button" class="menu-item" id="btn-backfill">Importer l'historique ancien <small>~100 matchs plus anciens par clic</small></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="shell">
+    <header class="pagebar">
+      <div class="pagebar-title">
+        <h1 id="page-title">Dashboard</h1>
+        <p id="page-sub">Vue d'ensemble de tes performances</p>
+      </div>
+      <div class="filters-bar">
+        <div class="field">
+          <span class="field-label">Mode</span>
+          <label class="select"><select id="filter-queue" aria-label="Mode de jeu"></select></label>
+        </div>
+        <div class="field">
+          <span class="field-label">Période</span>
+          <div class="seg" id="filter-period" role="group" aria-label="Période">
+            <button type="button" data-period="all">Tout</button>
+            <button type="button" data-period="act">Acte</button>
+            <button type="button" data-period="30">30 j</button>
+            <button type="button" data-period="7">7 j</button>
+            <button type="button" data-period="1">Auj.</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <main id="app" tabindex="-1">
+      <div class="boot" id="boot">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="boot-title">Chargement du tracker</p>
+        <p class="boot-sub" id="boot-sub">Téléchargement du contenu du jeu…</p>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel" tabindex="-1">
+      <button class="modal-close" type="button" data-close aria-label="Fermer">&times;</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

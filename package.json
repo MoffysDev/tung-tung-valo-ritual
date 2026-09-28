@@ -1,0 +1,9 @@
+{
+  "name": "tung-tung-tracker-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Frontend sans build (ES modules). Ce fichier sert uniquement aux tests JS.",
+  "scripts": {
+    "test": "node --test tests/stats.test.mjs"
+  }
+}
