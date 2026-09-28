@@ -9,10 +9,12 @@ import * as agents from "./views/agents.js";
 import * as locker from "./views/locker.js";
 import * as live from "./views/live.js";
 import { matchModal } from "./views/match.js";
+import * as ranked from "./views/ranked.js";
 
-const VIEWS = { dashboard, history, agents, locker, live };
+const VIEWS = { dashboard, ranked, history, agents, locker, live };
 const PAGES = {
   dashboard: ["Dashboard", "Vue d'ensemble de tes performances"],
+  ranked: ["Compétitif", "MMR estimé, progression et analyse de tes classées"],
   history: ["Historique", "Tous tes matchs enregistrés, jour par jour"],
   agents: ["Agents", "Tes performances agent par agent"],
   locker: ["Casier", "Tes skins et les kills réalisés avec chacun"],
@@ -59,7 +61,8 @@ function viewKey() {
   const srv = S.server || {};
   const base = [S.route, S.matchesVersion, S.filters.queue, S.filters.period, S.prefs.streamer ? 1 : 0];
   switch (S.route) {
-    case "dashboard": return JSON.stringify([...base, srv.profile]);
+    case "dashboard":
+    case "ranked": return JSON.stringify([...base, srv.profile]);
     case "history": return JSON.stringify([...base, srv.status?.backfill]);
     case "locker": return JSON.stringify([...base, srv.loadout]);
     case "live": return JSON.stringify([...base, srv.live?.updated, Math.floor(Date.now() / 30000)]);
@@ -85,7 +88,14 @@ const rerender = () => render(true);
 function renderPageBar() {
   const [title, sub] = PAGES[S.route];
   $("page-title").textContent = title;
-  const n = ctx().matches.length;
+  const c = ctx();
+  if (S.route === "ranked") {
+    // The competitive page always looks at ranked games, whatever the mode filter says.
+    const n = filterMatches(S.matches, { queue: "competitive", period: S.filters.period, season: S.server?.profile?.season }).length;
+    $("page-sub").textContent = `${sub} · ${n} classée${n > 1 ? "s" : ""} ${PERIODS[S.filters.period] || ""}`;
+    return;
+  }
+  const n = c.matches.length;
   $("page-sub").textContent = S.route === "live" ? sub
     : `${sub} · ${n} match${n > 1 ? "s" : ""} ${S.filters.queue === "all" ? "" : `en ${queueName(S.filters.queue)} `}${PERIODS[S.filters.period] || ""}`;
 }
@@ -291,8 +301,8 @@ document.addEventListener("input", (e) => { VIEWS[S.route].handle?.(e, rerender)
 document.addEventListener("keydown", (e) => {
   if (VIEWS[S.route].handle?.(e, rerender)) return;
   if (modalOpen() || e.target.closest("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
-  const keys = { 1: "dashboard", 2: "history", 3: "agents", 4: "locker", 5: "live" };
-  if (keys[e.key] && (e.key !== "5" || S.server?.live)) location.hash = `#/${keys[e.key]}`;
+  const keys = { 1: "dashboard", 2: "ranked", 3: "history", 4: "agents", 5: "locker", 6: "live" };
+  if (keys[e.key] && (e.key !== "6" || S.server?.live)) location.hash = `#/${keys[e.key]}`;
   if (e.key === "r" || e.key === "R") requestSync();
 });
 

@@ -73,6 +73,17 @@ def test_parse_match_core_stats():
     assert rec["kast"] == 100  # R1/R2 kills, R3 traded
     assert rec["weapon_kills"] == {WEAPON_VANDAL: 2, WEAPON_MELEE: 1, SHERIFF: 1}
     assert rec["clutches"] == {"2": 1}
+    # R1: Blue planted, so Blue attacked (won). R2/R3: first half, Red attacks -> Blue defends (won 1 of 2).
+    assert rec["sides"] == {"atk": [1, 1], "def": [1, 2]}
+    assert rec["pistols"] == [1, 1]
+    assert rec["opening"] == {"fb": 1, "fb_won": 1, "fd": 1, "fd_won": 0}
+
+
+def test_sides_and_overtime_rule():
+    from tracker.parser import attacking_team
+    assert [attacking_team(i) for i in (0, 11, 12, 23, 24, 25)] == ["Red", "Red", "Blue", "Blue", "Red", "Blue"]
+    unrated_dm = parse_match(make_match(queue="deathmatch"), "me", WEAPONS)
+    assert unrated_dm["sides"] is None and unrated_dm["pistols"] is None
 
 
 def test_scoreboard_names_and_known_players():
@@ -129,7 +140,13 @@ def test_parse_mmr_current_and_peak():
                 "WinsByTier": {"17": 2, "18": 4}},
     }}}}
     rank = parse_mmr(data, "cur", {"old": 1500000000000, "cur": 1700000000000})
+    acts = rank.pop("acts")
     assert rank == {"tier": 18, "rr": 42, "peak": 25, "peak_season": "old", "act_games": 10, "act_wins": 6}
+    # Only seasons with games, oldest first; pre-Ascendant tiers are shifted like the peak.
+    assert [(a["season"], a["tier"], a["games"]) for a in acts] == [("cur", 18, 10)]
+    data["QueueSkills"]["competitive"]["SeasonalInfoBySeasonID"]["old"]["NumberOfGames"] = 5
+    acts = parse_mmr(data, "cur", {"old": 1500000000000, "cur": 1700000000000})["acts"]
+    assert [(a["season"], a["tier"]) for a in acts] == [("old", 25), ("cur", 18)]
     # Unknown current season: fall back to latest update
     latest = {"LatestCompetitiveUpdate": {"TierAfterUpdate": 12, "RankedRatingAfterUpdate": 5, "SeasonID": "x"}}
     assert parse_mmr(latest, None)["tier"] == 12

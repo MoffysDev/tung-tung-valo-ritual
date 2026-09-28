@@ -25,7 +25,7 @@ jobs:
           node-version: "22"
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest -q
-      - run: node --test tests/stats.test.mjs
+      - run: node --test tests/stats.test.mjs tests/ranked.test.mjs
 
   exe:
     needs: test

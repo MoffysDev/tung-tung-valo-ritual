@@ -168,8 +168,19 @@ def test_legacy_matches_are_upgraded_without_double_counting(setup):
     riot.details = {"old": details("old", 1)}
     tracker._sync_history()
     rec = store.data["matches"]["old"]
-    assert rec["v"] == 2 and rec["loadout_source"] == "legacy" and rec["loadout"] == {}
+    assert rec["v"] == 3 and rec["loadout_source"] == "legacy" and rec["loadout"] == {}
     assert rec["acs"] == 300
+
+
+def test_v2_matches_keep_their_skins_when_upgraded(setup):
+    store, riot, tracker = setup
+    store.data["matches"]["m2"] = {"v": 2, "id": "m2", "loadout_source": "locked", "loadout": {WEAPON_VANDAL: SKIN_A},
+                                   "rr": {"earned": 12}}
+    riot.details = {"m2": details("m2", 1)}
+    tracker._sync_history()
+    rec = store.data["matches"]["m2"]
+    assert rec["v"] == 3 and rec["sides"] is not None
+    assert (rec["loadout_source"], rec["loadout"], rec["rr"]) == ("locked", {WEAPON_VANDAL: SKIN_A}, {"earned": 12})
 
 
 def test_pregame_live_view(setup):

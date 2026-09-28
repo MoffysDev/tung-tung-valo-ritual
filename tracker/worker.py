@@ -6,7 +6,7 @@ import threading
 import time
 
 from . import constants as C
-from .parser import parse_live_loadouts, parse_match, parse_mmr, parse_own_loadout
+from .parser import MATCH_VERSION, parse_live_loadouts, parse_match, parse_mmr, parse_own_loadout
 from .riot import NotRunning, RateLimited, RiotClient, RiotError, decode_presence, presence_party, presence_phase
 from .static_data import StaticData
 from .storage import Store
@@ -47,6 +47,7 @@ class Tracker:
         self._player_cache: dict[str, tuple[float, dict]] = {}
         self._name_cache: dict[str, str] = {}
         self._season_name: str | None = None
+        self._season_names: dict[str, str] = {}
         self._live_fetched: dict[str, float] = {}
         self._failures: dict[str, int] = {}
         self._backfill_target = 0
@@ -145,6 +146,8 @@ class Tracker:
         self._publish(connection="offline", phase=None, syncing=False, error=None, region=None)
 
     def _tick(self) -> float:
+        # The content cache can be refreshed later on: always use the freshest client version.
+        self.riot.fallback_version = self.static.version or self.riot.fallback_version
         if not self.riot.connect():
             self._set_offline()
             return C.TICK_OFFLINE
@@ -222,6 +225,16 @@ class Tracker:
                     self._season_starts[s["ID"].lower()] = int(time.mktime(time.strptime(start[:19], "%Y-%m-%dT%H:%M:%S")) * 1000)
                 except ValueError:
                     pass
+        # "Episode · Act" names for every act, to label the act history.
+        episodes = sorted((s for s in seasons if (s.get("Type") or "").lower() == "episode" and s.get("ID")),
+                          key=lambda s: self._season_starts.get(s["ID"].lower(), 0))
+        for s in seasons:
+            if (s.get("Type") or "").lower() != "act" or not s.get("ID"):
+                continue
+            start = self._season_starts.get(s["ID"].lower(), 0)
+            parent = [e for e in episodes if self._season_starts.get(e["ID"].lower(), 0) <= start]
+            label = f"{parent[-1].get('Name')} · {s.get('Name')}" if parent else s.get("Name")
+            self._season_names[s["ID"].lower()] = (label or "").strip(" ·")
         active = [s for s in seasons if s.get("IsActive") and (s.get("Type") or "").lower() == "act"]
         self._season = active[0]["ID"].lower() if active else ""
         episode = next((s for s in seasons if s.get("IsActive") and (s.get("Type") or "").lower() == "episode"), None)
@@ -276,7 +289,8 @@ class Tracker:
                 profile["level"] = value
 
         def rank():
-            profile["rank"] = self._rank_of(riot.puuid, force=True)
+            profile["rank"] = dict(self._rank_of(riot.puuid, force=True))
+            profile["rank"]["acts"] = [dict(a, name=self._season_names.get(a["season"], "")) for a in profile["rank"].get("acts", [])]
 
         for fn in (name, loadout, level, rank):
             attempt(fn)
@@ -466,7 +480,7 @@ class Tracker:
             if self._backfill_target:
                 todo += self._backfill_ids(total, processed | {t[0] for t in todo})
 
-            legacy = [mid for mid, m in self.store.data["matches"].items() if m.get("v", 1) < 2 and not m.get("upgrade_failed")]
+            legacy = [mid for mid, m in self.store.data["matches"].items() if m.get("v", 1) < MATCH_VERSION and not m.get("upgrade_failed")]
             todo = todo[: C.MAX_DETAILS_PER_SYNC]
             upgrades = legacy[: C.MAX_UPGRADES_PER_SYNC]
 
@@ -540,9 +554,14 @@ class Tracker:
             record["id"] = match_id
             previous = self.store.data["matches"].get(match_id) or {}
             if upgrade:
-                # v1 skin kills live in the legacy bucket already: don't count them twice.
-                record["loadout_source"] = "legacy"
-                record["loadout"] = {}
+                if previous.get("v", 1) >= 2:
+                    # Already tracked by v2: keep its skin attribution as is.
+                    record["loadout_source"] = previous.get("loadout_source", "unknown")
+                    record["loadout"] = previous.get("loadout", {})
+                else:
+                    # v1 skin kills live in the legacy bucket already: don't count them twice.
+                    record["loadout_source"] = "legacy"
+                    record["loadout"] = {}
                 if previous.get("rr"):
                     record["rr"] = previous["rr"]
             else:

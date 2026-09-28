@@ -467,6 +467,63 @@ table.data tbody tr:hover td { background: rgba(255,255,255,.03); }
 /* ---------------------------------------------------------------- live */
 .live-head { position: relative; overflow: hidden; border-radius: 16px; border: 1px solid var(--line-2); padding: 28px 30px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .live-head .map-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .55; }
+/* ---------------------------------------------------------------- competitive */
+.small { font-size: 12px; }
+.pill.gold { background: var(--gold-soft); color: var(--gold); }
+.mmr-card { display: flex; flex-direction: column; }
+.mmr-main { display: flex; align-items: center; gap: 22px; }
+.mmr-icon { width: 110px; height: 110px; object-fit: contain; filter: drop-shadow(0 8px 24px rgba(0,0,0,.6)); }
+.mmr-value { font-family: var(--font-display); font-size: 48px; line-height: 1; letter-spacing: .02em; text-transform: uppercase; }
+.mmr-rr { font: 700 18px var(--mono); color: var(--text-2); letter-spacing: 0; vertical-align: middle; }
+.mmr-verdict { font-weight: 800; font-size: 15px; margin-top: 8px; }
+.gauge { margin: 34px 0 26px; }
+.gauge-track { position: relative; height: 14px; border-radius: 7px; background: rgba(255,255,255,.04); }
+.gauge-seg { position: absolute; top: 0; bottom: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 35%, transparent), color-mix(in srgb, var(--c) 18%, transparent)); border-right: 2px solid var(--bg); }
+.gauge-seg:first-child { border-radius: 7px 0 0 7px; }
+.gauge-seg:last-of-type { border-radius: 0 7px 7px 0; }
+.gauge-seg span { position: absolute; top: 20px; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.gauge-mark { position: absolute; top: -9px; width: 4px; height: 32px; margin-left: -2px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 3px var(--bg); z-index: 2; }
+.gauge-mark.est { background: var(--c); box-shadow: 0 0 0 3px var(--bg), 0 0 16px var(--c); width: 6px; margin-left: -3px; }
+.gauge-mark span { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); font: 800 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--text-2); }
+.gauge-mark.est span { color: var(--c); }
+.mmr-facts { margin-top: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mmr-facts > div { padding: 12px 14px; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+.mmr-facts b { display: block; font-family: var(--font-display); font-size: 24px; line-height: 1.1; }
+.mmr-facts span { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.steps { margin: 0 0 14px; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 12px; }
+.steps li { position: relative; padding-left: 38px; color: var(--text-2); font-size: 13px; line-height: 1.55; counter-increment: step; }
+.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--red-soft); color: var(--red-2); font: 800 12px var(--mono); }
+.steps b { color: var(--text); }
+.prog .prog-dot { stroke: var(--bg); stroke-width: 2; cursor: pointer; transition: r .12s; }
+.prog .prog-dot:hover { r: 8; }
+.tips { display: grid; gap: 10px; }
+.tip-item { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; padding: 12px 14px; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+.tip-item b { display: block; margin-bottom: 2px; }
+.tip-item p { color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.tip-icon { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 13px; }
+.tip-item.good { border-color: rgba(32,217,166,.25); }
+.tip-item.good .tip-icon { background: var(--win-soft); color: var(--win); }
+.tip-item.warn { border-color: rgba(255,70,85,.25); }
+.tip-item.warn .tip-icon { background: var(--red-soft); color: var(--red-2); }
+.tip-item.info .tip-icon { background: var(--blue-soft); color: var(--blue); }
+.split { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.split:last-of-type { border-bottom: 0; }
+.split-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 13px; }
+.split-head b { font: 800 15px var(--mono); }
+.split-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.mini-split { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.mini-split div { padding: 8px; border-radius: 6px; background: rgba(255,255,255,.03); border: 1px solid var(--line); text-align: center; }
+.mini-split b { display: block; font: 800 14px var(--mono); }
+.mini-split span { font-size: 10px; color: var(--muted); font-weight: 700; }
+.agent-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.agent-chip { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); border: 1px solid var(--line); text-align: left; transition: border-color .15s; }
+.agent-chip:hover { border-color: var(--line-3); }
+.agent-chip img { width: 44px; height: 44px; border-radius: 6px; background: var(--panel-3); }
+.agent-chip b { display: block; }
+.agent-chip span { font-size: 12px; color: var(--muted); }
+.agent-chip em { font-style: normal; font-weight: 700; }
+.acts { max-height: 440px; overflow-y: auto; padding-right: 4px; }
+
 .live-head::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(8,14,20,.96), rgba(8,14,20,.5)); }
 .live-head > *:not(.map-bg) { position: relative; z-index: 2; }
 .live-phase { display: inline-flex; align-items: center; gap: 8px; color: var(--red-2); font-weight: 800; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }

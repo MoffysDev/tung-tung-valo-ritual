@@ -6,6 +6,18 @@ from collections import Counter
 from .constants import ASCENDANT_RELEASE_MS, SOCKET_CHROMA, SOCKET_SKIN, WEAPON_MELEE
 
 TRADE_WINDOW_MS = 5000
+MATCH_VERSION = 3
+# Queues with 12-round halves where sides can be derived from the round number.
+SIDED_QUEUES = {"competitive", "unrated", "premier", "newmap"}
+
+
+def attacking_team(round_index: int) -> str:
+    """Red attacks first; sides swap at round 12 and every round in overtime."""
+    if round_index < 12:
+        return "Red"
+    if round_index < 24:
+        return "Blue"
+    return "Red" if (round_index - 24) % 2 == 0 else "Blue"
 
 
 def _t(kill: dict) -> int:
@@ -74,8 +86,12 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
     multikills: Counter = Counter()
     clutches: Counter = Counter()
     weapon_kills: Counter = Counter()
+    sided = queue in SIDED_QUEUES and team_mode
+    sides = {"atk": [0, 0], "def": [0, 0]}  # [won, played]
+    pistols = [0, 0]
+    opening = {"fb": 0, "fb_won": 0, "fd": 0, "fd_won": 0}  # rounds won after I got / gave the first kill
 
-    for rd in rounds:
+    for idx, rd in enumerate(rounds):
         kills = []
         for ps in rd.get("playerStats") or []:
             kills.extend(ps.get("kills") or [])
@@ -101,11 +117,27 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
         )
         if my_kills or assisted or not death or traded:
             kast += 1
+        won_round = rd.get("winningTeam") == my_team
         if kills and team_mode:
             if _low(kills[0].get("killer")) == puuid:
                 fb += 1
+                opening["fb"] += 1
+                opening["fb_won"] += won_round
             if _low(kills[0].get("victim")) == puuid:
                 fd += 1
+                opening["fd"] += 1
+                opening["fd_won"] += won_round
+        if sided:
+            number = int(rd.get("roundNum", idx))
+            planter = _low(rd.get("bombPlanter"))
+            # A plant tells us who attacked; otherwise fall back to the half rule.
+            attackers = team_of[planter] if planter in team_of else attacking_team(number)
+            side = sides["atk" if attackers == my_team else "def"]
+            side[0] += won_round
+            side[1] += 1
+            if number in (0, 12):
+                pistols[0] += won_round
+                pistols[1] += 1
         if len(my_kills) >= 3:
             multikills[str(min(len(my_kills), 5))] += 1
         if _low(rd.get("bombPlanter")) == puuid:
@@ -162,7 +194,7 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
     hits = hs + body + legs
     rounds_div = max(n_rounds, 1)
     return {
-        "v": 2,
+        "v": MATCH_VERSION,
         "queue": queue,
         "map_id": info.get("mapId", ""),
         "season": _low(info.get("seasonId")),
@@ -195,6 +227,9 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
         "defuses": defuses,
         "multikills": dict(multikills),
         "clutches": dict(clutches),
+        "sides": sides if sided else None,
+        "pistols": pistols if sided else None,
+        "opening": opening if team_mode else None,
         "weapon_kills": dict(weapon_kills),
         "scoreboard": scoreboard,
     }
@@ -264,14 +299,28 @@ def parse_mmr(data: dict, current_season: str | None, season_starts: dict[str, i
         tier = int(latest.get("TierAfterUpdate") or 0)
         rr = int(latest.get("RankedRatingAfterUpdate") or 0)
 
-    peak, peak_season = 0, ""
-    for sid, info in seasons.items():
-        by_tier = (info or {}).get("WinsByTier") or {}
-        best = max((int(t) for t in by_tier if str(t).isdigit()), default=0)
+    def modern(t: int, sid: str) -> int:
         start = season_starts.get(_low(sid))
-        if best >= 21 and start is not None and start < ASCENDANT_RELEASE_MS:
-            best += 3
+        return t + 3 if t >= 21 and start is not None and start < ASCENDANT_RELEASE_MS else t
+
+    peak, peak_season = 0, ""
+    acts = []
+    for sid, info in seasons.items():
+        info = info or {}
+        by_tier = info.get("WinsByTier") or {}
+        best = modern(max((int(t) for t in by_tier if str(t).isdigit()), default=0), sid)
         if best > peak:
             peak, peak_season = best, _low(sid)
+        played = int(info.get("NumberOfGames") or 0)
+        if played:
+            acts.append({
+                "season": _low(sid),
+                "tier": modern(int(info.get("CompetitiveTier") or 0), sid),
+                "peak": best,
+                "games": played,
+                "wins": int(info.get("NumberOfWinsWithPlacements") or info.get("NumberOfWins") or 0),
+                "start": season_starts.get(_low(sid)),
+            })
+    acts.sort(key=lambda a: a["start"] or 0)
     peak = max(peak, tier)
-    return {"tier": tier, "rr": rr, "peak": peak, "peak_season": peak_season, "act_games": games, "act_wins": wins}
+    return {"tier": tier, "rr": rr, "peak": peak, "peak_season": peak_season, "act_games": games, "act_wins": wins, "acts": acts}

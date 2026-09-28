@@ -158,6 +158,10 @@ class StaticData:
                 data = json.load(f)
             if data.get("format") == CACHE_FORMAT:
                 self._set(data)
+            elif data.get("version"):
+                # Outdated layout: content gets re-downloaded, but the client version is still
+                # needed right away for Riot's X-Riot-ClientVersion header.
+                self.data = {"version": data["version"]}
         except (OSError, ValueError):
             pass
 
