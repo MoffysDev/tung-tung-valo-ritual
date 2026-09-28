@@ -103,9 +103,10 @@ class Tracker:
         with self._lock:
             self.revision += 1
 
-    def _event(self, kind: str, text: str) -> None:
+    def _event(self, kind: str, text: str, **extra) -> None:
         with self._lock:
-            self.events.append({"id": int(time.time() * 1000), "kind": kind, "text": text})
+            last = self.events[-1]["id"] if self.events else 0
+            self.events.append({"id": max(int(time.time() * 1000), last + 1), "kind": kind, "text": text, **extra})
             del self.events[:-20]
             self.revision += 1
 
@@ -497,6 +498,13 @@ class Tracker:
                 self._merge_rr()
             if added:
                 self._event("match", f"{added} nouveau{'x' if added > 1 else ''} match{'s' if added > 1 else ''} enregistré{'s' if added > 1 else ''}")
+                # End-of-match recap for a game that just finished (not for backfilled history).
+                fresh = [self.store.data["matches"][mid] for mid, backfill in todo
+                         if not backfill and mid in self.store.data["matches"]]
+                fresh = [m for m in fresh if time.time() * 1000 - (m.get("start") or 0) < 3 * 3600_000]
+                if fresh:
+                    latest = max(fresh, key=lambda m: m.get("start") or 0)
+                    self._event("recap", "Récap de ton dernier match", match_id=latest["id"])
             self._publish(last_sync=int(time.time() * 1000))
             self._catching_up = len(todo) >= C.MAX_DETAILS_PER_SYNC or len(legacy) > len(upgrades) or bool(self._backfill_target)
         finally:

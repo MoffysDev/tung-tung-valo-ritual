@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 API = "https://valorant-api.com/v1"
 LANGUAGE = "fr-FR"
 MAX_AGE = 12 * 3600
-CACHE_FORMAT = 6
+CACHE_FORMAT = 7
 # Non-playable agent variants get their own name so they are never confused with the real agent.
 SPECIAL_AGENTS = {"773f0c78-4486-752b-68ef-4585d7f4b848": "Robot Ability Draft"}
 
@@ -89,6 +89,16 @@ def build_content() -> dict:
             "splash": m.get("splash"),
             "list_icon": m.get("listViewIcon"),
             "tall_icon": m.get("listViewIconTall"),
+            # Minimap + game-coordinates transform: u = y * xm + xa, v = x * ym + ya (both in 0..1)
+            "minimap": m.get("displayIcon"),
+            "xm": m.get("xMultiplier"), "ym": m.get("yMultiplier"),
+            "xa": m.get("xScalarToAdd"), "ya": m.get("yScalarToAdd"),
+            # Named zones (game coordinates), used to say where you die the most.
+            "callouts": [
+                {"n": f"{c.get('superRegionName') or ''} {c.get('regionName') or ''}".strip(),
+                 "x": c["location"]["x"], "y": c["location"]["y"]}
+                for c in m.get("callouts") or [] if c.get("location")
+            ],
         }
 
     tiers = {}

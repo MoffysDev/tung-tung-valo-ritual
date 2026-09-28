@@ -252,3 +252,63 @@ export function insights({ mmr, rr, rounds, tilt, parties, maps = [], agents = [
 
   return tips.sort((a, b) => b.weight - a.weight);
 }
+
+// ------------------------------------------------------------------ economy
+export const BUYS = [
+  { key: "pistol", label: "Rounds pistol" },
+  { key: "eco", label: "Éco" },
+  { key: "force", label: "Force-buy" },
+  { key: "full", label: "Full buy" },
+];
+
+/** Round win rate by your team's buy, plus the classic "lost vs an eco" leak. */
+export function economyStats(matches) {
+  const by = Object.fromEntries(BUYS.map((b) => [b.key, [0, 0]]));
+  const antiEco = [0, 0]; // [lost, played] full buy vs enemy eco
+  const bonus = [0, 0];   // our eco/force against their full buy: [won, played]
+  let spent = 0, kills = 0, rounds = 0;
+  for (const m of matches) {
+    if (!m.round_log) continue;
+    rounds += m.round_log.length;
+    spent += m.spent || 0;
+    kills += m.kills || 0;
+    for (const [won, , mine, theirs] of m.round_log) {
+      by[mine][0] += won;
+      by[mine][1] += 1;
+      if (mine === "full" && theirs === "eco") { antiEco[0] += 1 - won; antiEco[1] += 1; }
+      if ((mine === "eco" || mine === "force") && theirs === "full") { bonus[0] += won; bonus[1] += 1; }
+    }
+  }
+  return {
+    rounds,
+    buys: BUYS.map((b) => ({ ...b, won: by[b.key][0], played: by[b.key][1], rate: by[b.key][1] ? by[b.key][0] / by[b.key][1] : NaN })),
+    antiEco: { lost: antiEco[0], played: antiEco[1], rate: antiEco[1] ? antiEco[0] / antiEco[1] : NaN },
+    upsets: { won: bonus[0], played: bonus[1], rate: bonus[1] ? bonus[0] / bonus[1] : NaN },
+    creditsPerKill: kills ? spent / kills : NaN,
+    creditsPerRound: rounds ? spent / rounds : NaN,
+  };
+}
+
+// ------------------------------------------------------------------ rank goal
+/**
+ * How far is the target rank, and how many games at the current pace.
+ * `targetTier` is a tier number (e.g. 18 = Diamond 1), `visible` your current points.
+ */
+export function rankGoal(comp, visible, targetTier) {
+  const needed = targetTier * 100 - visible;
+  const recent = comp.filter((m) => m.rr && (m.result || (m.won ? "win" : "loss")) !== "draw").slice(-20);
+  const wins = recent.filter((m) => (m.result || (m.won ? "win" : "loss")) === "win");
+  const losses = recent.filter((m) => (m.result || (m.won ? "win" : "loss")) === "loss");
+  const gain = wins.length ? mean(wins.map((m) => m.rr.earned)) : 20;
+  const loss = losses.length ? mean(losses.map((m) => m.rr.earned)) : -20;
+  const wr = recent.length ? wins.length / recent.length : 0.5;
+  const perGame = wr * gain + (1 - wr) * loss;
+  const breakEven = -loss / (gain - loss); // winrate that keeps you flat
+  return {
+    needed, reached: needed <= 0, sample: recent.length,
+    gain, loss, winrate: wr, perGame, breakEven,
+    games: needed <= 0 ? 0 : perGame > 0.5 ? Math.ceil(needed / perGame) : Infinity,
+    // Winrate needed to get there within 50 games
+    wrFor50: needed > 0 ? clamp((needed / 50 - loss) / (gain - loss), 0, 1) : 0,
+  };
+}

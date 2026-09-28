@@ -612,7 +612,7 @@ table.data tbody tr:hover td { background: rgba(255,255,255,.03); }
   background: rgba(29, 43, 57, .97); border: 1px solid var(--line-3); box-shadow: var(--shadow);
   font-size: 12px; line-height: 1.45; color: var(--text-2); white-space: pre-line;
 }
-.toasts { position: fixed; right: 24px; bottom: 24px; z-index: 80; display: grid; gap: 8px; }
+.toasts { position: fixed; right: 24px; top: 24px; z-index: 80; display: grid; gap: 8px; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-radius: var(--radius-sm); background: var(--panel-3); border: 1px solid var(--line-2); border-left: 3px solid var(--win); box-shadow: var(--shadow); font-weight: 600; font-size: 13px; animation: slide-in .25s ease; max-width: 380px; }
 .toast.lock, .toast.error { border-left-color: var(--red); }
 .toast.leaving { animation: fade-out .3s ease forwards; }
@@ -658,3 +658,71 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .player { grid-template-columns: 52px minmax(0, 1fr) 92px; }
   .player .skins { grid-column: 2 / -1; grid-row: 2; }
 }
+
+/* ---------------------------------------------------------------- positions */
+.map-card { display: flex; flex-direction: column; }
+.map-wrap { display: grid; place-items: center; background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.03), transparent 70%); border-radius: var(--radius-sm); padding: 8px; }
+.minimap { width: 100%; height: auto; display: block; }
+.minimap .pos-dot { stroke: #080e14; stroke-width: 3; cursor: pointer; transition: r .12s; }
+.minimap .pos-dot:hover { r: 13; }
+.zones { display: grid; gap: 10px; }
+.zone { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; font-size: 13px; }
+.zone span { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zone b { font: 800 13px var(--mono); }
+.zone .bar-track { grid-column: 1; margin-top: 2px; }
+.zone small { color: var(--muted); font: 600 11px var(--mono); }
+
+/* ---------------------------------------------------------------- rounds timeline */
+.rounds { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; }
+.round { width: 38px; padding: 4px 0; border-radius: 6px; text-align: center; display: grid; gap: 1px; border: 1px solid var(--line); background: rgba(255,255,255,.03); cursor: default; }
+.round.win { background: var(--win-soft); border-color: rgba(32,217,166,.35); }
+.round.loss { background: var(--red-soft); border-color: rgba(255,70,85,.3); }
+.round small { font: 700 9px var(--mono); color: var(--muted); }
+.round b { font: 800 13px var(--mono); }
+.round.win b { color: var(--win); }
+.round.loss b { color: var(--red-2); }
+.round em { font-style: normal; font: 800 10px var(--mono); color: var(--text-2); }
+.round-sep { width: 2px; margin: 0 6px; background: var(--line-3); border-radius: 2px; }
+
+/* ---------------------------------------------------------------- goal & economy */
+.goal-card { display: flex; flex-direction: column; }
+.goal-card .select select { min-width: 170px; }
+.goal-track { display: grid; grid-template-columns: 90px minmax(0, 1fr) 90px; align-items: center; gap: 14px; margin: 6px 0 22px; }
+.goal-end { text-align: center; }
+.goal-end img { width: 64px; height: 64px; margin: 0 auto; object-fit: contain; }
+.goal-end span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.goal-left { font-size: 12px; color: var(--text-2); margin-top: 8px; text-align: center; }
+.eco-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.eco { padding: 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); border: 1px solid var(--line); text-align: center; }
+.eco span { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.eco b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.2; }
+.eco small { font-size: 11px; color: var(--muted); }
+
+/* ---------------------------------------------------------------- players */
+.rank-inline { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; }
+.rank-inline img { width: 24px; height: 24px; }
+table.data tr.clickable, .scoreboard tr.clickable { cursor: pointer; }
+.scoreboard tr.clickable:hover td { background: rgba(255,255,255,.04); }
+button.pill { border: 0; cursor: pointer; }
+button.pill:hover { filter: brightness(1.25); }
+
+/* ---------------------------------------------------------------- end-of-match recap */
+.recap-host { position: fixed; right: 24px; bottom: 24px; z-index: 85; }
+.recap { position: relative; overflow: hidden; width: 400px; padding: 18px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line-3); box-shadow: 0 30px 70px rgba(0,0,0,.6); animation: slide-in .35s cubic-bezier(.2,.9,.3,1.15); display: grid; gap: 14px; }
+.recap.r-win { border-left: 4px solid var(--win); }
+.recap.r-loss { border-left: 4px solid var(--red); }
+.recap-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .18; pointer-events: none; }
+.recap > *:not(.recap-bg) { position: relative; }
+.recap-close { position: absolute !important; right: 10px; top: 8px; z-index: 2; background: none; border: 0; font-size: 22px; color: var(--muted); }
+.recap-close:hover { color: var(--text); }
+.recap-head { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.recap-head img { width: 52px; height: 52px; border-radius: 8px; background: var(--panel-3); }
+.recap-result { font-family: var(--font-display); font-size: 28px; line-height: 1.1; text-transform: uppercase; letter-spacing: .03em; }
+.recap-rr { text-align: right; font-family: var(--font-display); font-size: 30px; line-height: 1; margin-right: 18px; }
+.recap-rr small { font-size: 14px; margin-left: 2px; }
+.recap-rr span { display: block; font: 600 11px var(--font); color: var(--muted); margin-top: 4px; }
+.recap-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.recap-stat { padding: 8px; border-radius: 8px; background: rgba(8,14,20,.6); border: 1px solid var(--line); }
+.recap-stat b { display: block; font: 800 15px var(--mono); }
+.recap-stat span { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.recap-stat em { display: block; font-style: normal; font: 700 10px var(--mono); margin-top: 3px; }

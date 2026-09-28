@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Frontend sans build (ES modules). Ce fichier sert uniquement aux tests JS.",
   "scripts": {
-    "test": "node --test tests/stats.test.mjs tests/ranked.test.mjs"
+    "test": "node --test tests/stats.test.mjs tests/ranked.test.mjs tests/features.test.mjs"
   }
 }

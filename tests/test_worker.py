@@ -6,6 +6,7 @@ import pytest
 from tracker import constants as C
 from tracker.constants import WEAPON_VANDAL
 from tracker.riot import RiotError
+from tracker.parser import MATCH_VERSION
 from tracker.storage import Store
 from tracker.worker import Tracker
 from tests.test_parser import make_match
@@ -168,7 +169,7 @@ def test_legacy_matches_are_upgraded_without_double_counting(setup):
     riot.details = {"old": details("old", 1)}
     tracker._sync_history()
     rec = store.data["matches"]["old"]
-    assert rec["v"] == 3 and rec["loadout_source"] == "legacy" and rec["loadout"] == {}
+    assert rec["v"] == MATCH_VERSION and rec["loadout_source"] == "legacy" and rec["loadout"] == {}
     assert rec["acs"] == 300
 
 
@@ -179,7 +180,7 @@ def test_v2_matches_keep_their_skins_when_upgraded(setup):
     riot.details = {"m2": details("m2", 1)}
     tracker._sync_history()
     rec = store.data["matches"]["m2"]
-    assert rec["v"] == 3 and rec["sides"] is not None
+    assert rec["v"] == MATCH_VERSION and rec["sides"] is not None
     assert (rec["loadout_source"], rec["loadout"], rec["rr"]) == ("locked", {WEAPON_VANDAL: SKIN_A}, {"earned": 12})
 
 
@@ -214,3 +215,18 @@ def test_offline_state(setup):
     riot.connected = False
     tracker._tick()
     assert tracker.status["connection"] == "offline" and tracker.live is None
+
+
+def test_recap_event_for_a_fresh_match(setup):
+    import time as _t
+    store, riot, tracker = setup
+    riot.history = ["NEW"]
+    riot.details = {"NEW": details("NEW", int(_t.time() * 1000) - 60_000)}
+    tracker._sync_history()
+    recaps = [e for e in tracker.events if e["kind"] == "recap"]
+    assert recaps and recaps[-1]["match_id"] == "new"
+    # Old matches never trigger a recap
+    riot.history = ["OLD"]
+    riot.details = {"OLD": details("OLD", 1000)}
+    tracker._sync_history()
+    assert len([e for e in tracker.events if e["kind"] == "recap"]) == 1

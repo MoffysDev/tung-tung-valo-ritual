@@ -86,6 +86,8 @@ def create_app(tracker: Tracker, static_dir: str) -> Flask:
             payload = {
                 "matches": list(store.data["matches"].values()),
                 "legacy": store.data["legacy"],
+                # Names/ranks of players seen in live games (never players in streamer mode)
+                "players": store.data["known_players"],
                 "version": version,
             }
         return json_response(payload, etag=version, cache=True)

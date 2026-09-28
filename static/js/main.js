@@ -10,12 +10,17 @@ import * as locker from "./views/locker.js";
 import * as live from "./views/live.js";
 import { matchModal } from "./views/match.js";
 import * as ranked from "./views/ranked.js";
+import * as positions from "./views/positions.js";
+import * as players from "./views/players.js";
+import { recapHtml } from "./views/recap.js";
 
-const VIEWS = { dashboard, ranked, history, agents, locker, live };
+const VIEWS = { dashboard, ranked, history, positions, agents, players, locker, live };
 const PAGES = {
   dashboard: ["Dashboard", "Vue d'ensemble de tes performances"],
   ranked: ["Compétitif", "MMR estimé, progression et analyse de tes classées"],
   history: ["Historique", "Tous tes matchs enregistrés, jour par jour"],
+  positions: ["Positions", "Où tu meurs et d'où tu tues, carte par carte"],
+  players: ["Joueurs", "Les joueurs que tu as croisés, avec ou contre toi"],
   agents: ["Agents", "Tes performances agent par agent"],
   locker: ["Casier", "Tes skins et les kills réalisés avec chacun"],
   live: ["Match en direct", "Joueurs, rangs et skins de la partie en cours"],
@@ -31,6 +36,7 @@ const S = {
   server: null,
   matches: [],
   legacy: {},
+  known: {},
   matchesEtag: null,
   matchesVersion: -1,
   contentEtag: null,
@@ -51,6 +57,7 @@ function ctx() {
     all: S.matches,
     matches: filterMatches(S.matches, { ...S.filters, season }),
     legacy: S.legacy,
+    known: S.known,
     server: S.server || {},
     filters: S.filters,
     prefs: S.prefs,
@@ -151,7 +158,11 @@ function renderChrome() {
   // Toasts for new server events (skip the backlog on first load).
   const events = srv.events || [];
   if (S.lastEvent === null) S.lastEvent = events.length ? events[events.length - 1].id : 0;
-  for (const ev of events) if (ev.id > S.lastEvent) toast(ev.text, ev.kind);
+  for (const ev of events) {
+    if (ev.id <= S.lastEvent) continue;
+    if (ev.kind === "recap") showRecap(ev.match_id);
+    else toast(ev.text, ev.kind);
+  }
   if (events.length) S.lastEvent = Math.max(S.lastEvent, events[events.length - 1].id);
 
   $("app-version").textContent = `v${srv.app_version || "?"}`;
@@ -198,6 +209,7 @@ async function loadMatches() {
   if (res.notModified) return false;
   S.matches = res.body.matches || [];
   S.legacy = res.body.legacy || {};
+  S.known = res.body.players || {};
   S.matchesEtag = res.etag;
   S.matchesVersion = res.body.version;
   renderFilters();
@@ -227,6 +239,15 @@ async function poll() {
   }
 }
 
+let recapTimer = null;
+function showRecap(matchId) {
+  const m = S.matches.find((x) => x.id === matchId);
+  if (!m) return;
+  $("recap").innerHTML = String(recapHtml(m, S.matches));
+  clearTimeout(recapTimer);
+  recapTimer = setTimeout(() => { $("recap").innerHTML = ""; }, 60000);
+}
+
 async function requestSync() {
   try {
     await api.syncNow();
@@ -254,6 +275,13 @@ document.addEventListener("click", async (e) => {
   if (weaponBtn) {
     hideTip();
     openModal(locker.skinsModal(weaponBtn.dataset.weapon, ctx()), { label: "Comparateur de skins" });
+    return;
+  }
+  if (e.target.closest("[data-recap-close]")) { $("recap").innerHTML = ""; return; }
+  const playerBtn = e.target.closest("[data-player]");
+  if (playerBtn) {
+    hideTip();
+    openModal(players.playerModal(playerBtn.dataset.player, ctx()), { label: "Profil du joueur" });
     return;
   }
   const agentBtn = e.target.closest("[data-agent]");
@@ -286,6 +314,10 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("change", (e) => {
   if (VIEWS[S.route].handle?.(e, rerender)) return;
   if (e.target.id === "filter-queue") setFilter("queue", e.target.value);
+  if (e.target.matches("[data-goal]")) {
+    S.prefs = savePrefs({ goal: Number(e.target.value) });
+    rerender();
+  }
   if (e.target.id === "opt-streamer") {
     S.prefs = savePrefs({ streamer: e.target.checked });
     rerender();
@@ -301,8 +333,8 @@ document.addEventListener("input", (e) => { VIEWS[S.route].handle?.(e, rerender)
 document.addEventListener("keydown", (e) => {
   if (VIEWS[S.route].handle?.(e, rerender)) return;
   if (modalOpen() || e.target.closest("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
-  const keys = { 1: "dashboard", 2: "ranked", 3: "history", 4: "agents", 5: "locker", 6: "live" };
-  if (keys[e.key] && (e.key !== "6" || S.server?.live)) location.hash = `#/${keys[e.key]}`;
+  const keys = { 1: "dashboard", 2: "ranked", 3: "history", 4: "positions", 5: "agents", 6: "players", 7: "locker", 8: "live" };
+  if (keys[e.key] && (e.key !== "8" || S.server?.live)) location.hash = `#/${keys[e.key]}`;
   if (e.key === "r" || e.key === "R") requestSync();
 });
 

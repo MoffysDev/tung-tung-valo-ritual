@@ -33,17 +33,25 @@
         <svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 1-7.4 5H2l3.5-4L9 9H6.7A6 6 0 1 0 12 6zm-1 3h2v5l4 2.3-1 1.7-5-3z"/></svg>
         <span>Historique</span><kbd>3</kbd>
       </a>
+      <a href="#/positions" data-tab="positions">
+        <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>
+        <span>Positions</span><kbd>4</kbd>
+      </a>
       <a href="#/agents" data-tab="agents">
         <svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 2 8 4.5V21H4v-3.5C4 15 7.6 13 12 13z"/></svg>
-        <span>Agents</span><kbd>4</kbd>
+        <span>Agents</span><kbd>5</kbd>
+      </a>
+      <a href="#/players" data-tab="players">
+        <svg viewBox="0 0 24 24"><path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm8 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM9 14c4 0 7 1.8 7 4v2H2v-2c0-2.2 3-4 7-4zm8 0c3 0 5 1.4 5 3.3V20h-4v-2c0-1.6-.6-2.9-1.7-3.9z"/></svg>
+        <span>Joueurs</span><kbd>6</kbd>
       </a>
       <a href="#/locker" data-tab="locker">
         <svg viewBox="0 0 24 24"><path d="M2 10h14l2-2h4v3h-3l-1 2h-3l-1 5H9l1-5H4l-2-1z"/></svg>
-        <span>Casier</span><kbd>5</kbd>
+        <span>Casier</span><kbd>7</kbd>
       </a>
       <a href="#/live" data-tab="live" class="nav-live" hidden>
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8l1.4-1.4a7 7 0 0 1 0-10zm12.8 0-1.4 1.4a7 7 0 0 1 0 10l1.4 1.4a9 9 0 0 0 0-12.8z"/></svg>
-        <span>Match en direct</span><kbd>6</kbd>
+        <span>Match en direct</span><kbd>8</kbd>
       </a>
     </nav>
 
@@ -116,6 +124,7 @@
 
   <div class="tip" id="tip" role="tooltip" hidden></div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="recap-host" id="recap" aria-live="polite"></div>
 
   <script type="module" src="/static/js/main.js"></script>
 </body>

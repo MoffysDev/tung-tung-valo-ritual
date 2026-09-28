@@ -73,7 +73,7 @@ function player(p, enemy, ctx) {
         ${p.level ? html`<span class="pill">Niv. ${p.level}</span>` : ""}
         ${p.is_me ? html`<span class="pill gold">Toi</span>` : p.my_party ? html`<span class="pill gold">Ton groupe</span>` : ""}
         ${rank.act_games ? html`<span title="Victoires cet acte">${Math.round((rank.act_wins / rank.act_games) * 100)}% V · ${rank.act_games} parties</span>` : ""}
-        ${enc ? html`<span class="pill blue" data-tip="${enc.with} fois avec toi, ${enc.against} fois contre toi\n${enc.wins} victoire${enc.wins > 1 ? "s" : ""} · dernière fois ${ago(enc.last)}">Déjà croisé ${enc.count}×</span>` : ""}
+        ${enc ? html`<button type="button" class="pill blue" data-player="${p.puuid}" data-tip="${enc.with} fois avec toi, ${enc.against} fois contre toi\n${enc.wins} victoire${enc.wins > 1 ? "s" : ""} · dernière fois ${ago(enc.last)}\nClique pour voir vos matchs">Déjà croisé ${enc.count}× ›</button>` : ""}
       </div>
     </div>
     <div class="skins">${SHOWN.map(([key, label]) => {

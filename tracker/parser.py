@@ -6,9 +6,25 @@ from collections import Counter
 from .constants import ASCENDANT_RELEASE_MS, SOCKET_CHROMA, SOCKET_SKIN, WEAPON_MELEE
 
 TRADE_WINDOW_MS = 5000
-MATCH_VERSION = 3
-# Queues with 12-round halves where sides can be derived from the round number.
+MATCH_VERSION = 4
+# Queues with 12-round halves (pistol rounds are rounds 1 and 13).
 SIDED_QUEUES = {"competitive", "unrated", "premier", "newmap"}
+# Team buy, from the average loadout value of the 5 players.
+BUY_ECO, BUY_FULL = 1500, 3500
+
+
+def buy_type(round_index: int, avg_loadout: float, sided: bool) -> str:
+    if sided and round_index in (0, 12):
+        return "pistol"
+    if avg_loadout < BUY_ECO:
+        return "eco"
+    return "full" if avg_loadout >= BUY_FULL else "force"
+
+
+def _xy(loc) -> tuple[int, int] | None:
+    if isinstance(loc, dict) and loc.get("x") is not None and loc.get("y") is not None:
+        return int(loc["x"]), int(loc["y"])
+    return None
 
 
 def attacking_team(round_index: int) -> str:
@@ -90,6 +106,10 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
     sides = {"atk": [0, 0], "def": [0, 0]}  # [won, played]
     pistols = [0, 0]
     opening = {"fb": 0, "fb_won": 0, "fd": 0, "fd_won": 0}  # rounds won after I got / gave the first kill
+    round_log: list = []  # [won, side a/d, my team buy, enemy buy, my loadout value, my credits spent]
+    kill_pos: list = []
+    death_pos: list = []
+    spent = 0
 
     for idx, rd in enumerate(rounds):
         kills = []
@@ -127,17 +147,60 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
                 fd += 1
                 opening["fd"] += 1
                 opening["fd_won"] += won_round
-        if sided:
-            number = int(rd.get("roundNum", idx))
-            planter = _low(rd.get("bombPlanter"))
-            # A plant tells us who attacked; otherwise fall back to the half rule.
-            attackers = team_of[planter] if planter in team_of else attacking_team(number)
-            side = sides["atk" if attackers == my_team else "def"]
-            side[0] += won_round
-            side[1] += 1
-            if number in (0, 12):
-                pistols[0] += won_round
-                pistols[1] += 1
+        number = int(rd.get("roundNum", idx))
+        side_key = ""
+        if team_mode:
+            role = rd.get("winningTeamRole")
+            i_attack = None
+            if role in ("Attacker", "Defender"):
+                # Riot tells us the winner's role: we attacked if we won as attacker or lost to defenders.
+                i_attack = (role == "Attacker") == won_round
+            elif sided:
+                planter = _low(rd.get("bombPlanter"))
+                attackers = team_of[planter] if planter in team_of else attacking_team(number)
+                i_attack = attackers == my_team
+            if i_attack is not None:
+                side_key = "atk" if i_attack else "def"
+                sides[side_key][0] += won_round
+                sides[side_key][1] += 1
+        if sided and number in (0, 12):
+            pistols[0] += won_round
+            pistols[1] += 1
+
+        # Economy: team buys from the players' loadout values at the start of the round.
+        if team_mode:
+            values = {"mine": [], "theirs": []}
+            my_eco = None
+            for ps in rd.get("playerStats") or []:
+                eco = ps.get("economy") or {}
+                subject = _low(ps.get("subject"))
+                if subject not in team_of or eco.get("loadoutValue") is None:
+                    continue
+                values["mine" if team_of[subject] == my_team else "theirs"].append(int(eco["loadoutValue"]))
+                if subject == puuid:
+                    my_eco = eco
+            if values["mine"] and values["theirs"]:
+                avg = {k: sum(v) / len(v) for k, v in values.items()}
+                round_log.append([
+                    int(won_round), side_key[:1],
+                    buy_type(number, avg["mine"], sided), buy_type(number, avg["theirs"], sided),
+                    int((my_eco or {}).get("loadoutValue") or 0), int((my_eco or {}).get("spent") or 0),
+                ])
+            if my_eco:
+                spent += int(my_eco.get("spent") or 0)
+
+        # Positions (game coordinates) of my kills and deaths: [my_x, my_y, other_x, other_y, round, side, second]
+        for k in kills:
+            killer, victim = _low(k.get("killer")), _low(k.get("victim"))
+            if puuid not in (killer, victim):
+                continue
+            locs = {_low(p.get("subject")): _xy(p.get("location")) for p in k.get("playerLocations") or []}
+            victim_at = _xy(k.get("victimLocation"))
+            if killer == puuid and killer != victim and locs.get(puuid) and victim_at:
+                kill_pos.append([*locs[puuid], *victim_at, number, side_key[:1], _t(k) // 1000])
+            elif victim == puuid and victim_at:
+                killer_at = locs.get(killer) or victim_at
+                death_pos.append([*victim_at, *killer_at, number, side_key[:1], _t(k) // 1000])
         if len(my_kills) >= 3:
             multikills[str(min(len(my_kills), 5))] += 1
         if _low(rd.get("bombPlanter")) == puuid:
@@ -227,9 +290,12 @@ def parse_match(data: dict, puuid: str, weapon_ids: set[str], known_players: dic
         "defuses": defuses,
         "multikills": dict(multikills),
         "clutches": dict(clutches),
-        "sides": sides if sided else None,
+        "sides": sides if sides["atk"][1] + sides["def"][1] else None,
         "pistols": pistols if sided else None,
         "opening": opening if team_mode else None,
+        "round_log": round_log or None,
+        "spent": spent,
+        "positions": {"kills": kill_pos, "deaths": death_pos} if team_mode else None,
         "weapon_kills": dict(weapon_kills),
         "scoreboard": scoreboard,
     }

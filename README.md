@@ -20,7 +20,11 @@
 |---|---|
 | 📊 **Dashboard** | Player card banner, rank with RR ring, peak rank, act record. 8 KPIs (winrate, K/D, ACS, ADR, HS%, KAST…) with sparklines and a trend versus your previous matches. ACS + K/D chart (hover any bar), best agent, recent matches, highlights (first bloods, clutches, aces, multi-kills, best streak), top agents, maps and weapons. |
 | 🏆 **Competitive** | **Estimated hidden MMR** (from your lobbies' average rank and your RR gains vs losses) on a gauge against your displayed rank, with a plain explanation of the maths and a confidence score. RR progression chart with your MMR overlaid, RR stats and streaks, **tips generated from your games** (tilt, session length, weak side, pistols, first deaths, maps, solo vs duo…), attack/defense and pistol round win rates, opening-duel impact, solo/duo/trio results, win rate after a win / a loss / two losses, by game of the session and time of day, maps with attack/defense split and net RR, and your rank at the end of every act. |
-| 🕒 **History** | Every match grouped by day with daily record and RR, filterable by result / agent / map, searchable by player, map or agent, with a summary of the selection (winrate, K/D, ACS, net RR). Click a match for the full scoreboard (ACS, parties, ranks, MVP), your detailed stats and kills per weapon with the skin you used. Import up to 100 older matches in one click. |
+| 🎯 **Rank goal & economy** | Pick a target rank: points missing, games needed at your current pace, break-even win rate and the win rate needed to get there in 50 games. Round win rate by buy (pistol, eco, force, full), full buys lost to an eco, rounds stolen on an eco, credits spent per kill. |
+| 🗺️ **Positions** | Every kill and death on the minimap (heat + dots), per map and per side, optional lines to the enemy, the named zones where you die / frag the most, and your share of deaths in the first 20 seconds of a round. |
+| 👥 **Players** | Everyone you've shared a match with: games together, your win rate with them and against them, their K/D and ACS, agents they play. Click a name anywhere (scoreboards, live match) to open their profile. |
+| 🔔 **End-of-match recap** | Right after a game: result, RR, KDA, your place on the scoreboard and how the game compares to your recent average. |
+| 🕒 **History** | Every match grouped by day with daily record and RR, filterable by result / agent / map, searchable by player, map or agent, with a summary of the selection (winrate, K/D, ACS, net RR). Click a match for the full scoreboard (ACS, parties, ranks, MVP), a round-by-round timeline with each team's buy, your kills and deaths on the map, your detailed stats and kills per weapon with the skin you used. Import up to 100 older matches in one click. |
 | 🧑‍🚀 **Agents** | Portrait cards for your mains plus a sortable table (matches, winrate, K/D, KDA, ACS, ADR, HS%, KAST, first bloods, playtime). Click an agent for its detail: stats versus your average, per-map results, recent matches. |
 | 🔫 **Locker** | Every weapon with your equipped skin (exact chroma) and its kills. Click a weapon to rank all the skins you've used with it (kills/match weighted by sample size). |
 | 🕵️ **Live** | Opens automatically in agent select: agents (locked or not), ranks + RR, peak rank, act winrate, level, Vandal/Phantom/knife skins, your party, and **players you've already met** (with/against). Players in streamer mode stay hidden. |
@@ -56,7 +60,7 @@ The dashboard opens at <http://127.0.0.1:5000>. Launch Valorant (or just the Rio
 | `--data PATH` | Store the database somewhere else (default: `db/`) |
 | `--verbose` | Debug logs |
 
-Designed for desktop screens. Keyboard shortcuts: `1`–`6` switch pages, `R` syncs now, `Esc` closes a dialog.
+Designed for desktop screens. Keyboard shortcuts: `1`–`8` switch pages, `R` syncs now, `Esc` closes a dialog.
 
 ## How it works
 
@@ -101,7 +105,7 @@ git push origin v2.0.1
 ```bash
 pip install pytest
 python -m pytest          # backend: parser, storage/migrations, worker with a fake Riot client
-node --test tests/stats.test.mjs tests/ranked.test.mjs   # frontend stats
+node --test tests/stats.test.mjs tests/ranked.test.mjs tests/features.test.mjs   # frontend stats
 ```
 
 ## Privacy & compliance

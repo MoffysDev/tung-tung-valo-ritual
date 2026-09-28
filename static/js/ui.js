@@ -22,6 +22,7 @@ export function closeModal() {
   if (modal.hidden) return;
   modal.hidden = true;
   modalBody.innerHTML = "";
+  hideTip();
   document.body.style.overflow = "";
   lastFocus?.focus?.();
   onClose?.();

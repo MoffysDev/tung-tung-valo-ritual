@@ -167,3 +167,33 @@ def test_region_resolution():
     assert resolve_region("EU") == ("eu", "eu")
     assert resolve_region("latam") == ("latam", "na")
     assert resolve_region("br") == ("br", "na")
+
+
+def test_roles_economy_and_positions():
+    m = make_match()
+    eco = lambda value, spent=0: {"loadoutValue": value, "spent": spent}
+    r1 = m["roundResults"][0]
+    r1["winningTeamRole"] = "Defender"  # Blue won R1 -> Blue defended (overrides the plant rule)
+    r1["playerStats"] += [{"subject": A2, "economy": eco(800)}, {"subject": E1, "economy": eco(3900)}, {"subject": E2, "economy": eco(4100)}]
+    r1["playerStats"][0]["economy"] = eco(1000, 800)
+    r1["playerStats"][0]["kills"][0]["playerLocations"] = [{"subject": "ME", "location": {"x": 10, "y": 20}}]
+    r1["playerStats"][0]["kills"][0]["victimLocation"] = {"x": 30, "y": 40}
+    death = m["roundResults"][2]["playerStats"][0]["kills"][0]
+    death["victimLocation"] = {"x": 1, "y": 2}
+    death["playerLocations"] = [{"subject": E1, "location": {"x": 3, "y": 4}}]
+
+    rec = parse_match(m, "me", WEAPONS)
+    assert rec["sides"]["def"] == [2, 3] and rec["sides"]["atk"] == [0, 0]
+    assert rec["round_log"] == [[1, "d", "pistol", "pistol", 1000, 800]]  # only R1 has economy data
+    assert rec["spent"] == 800
+    assert rec["positions"]["kills"] == [[10, 20, 30, 40, 0, "d", 1]]
+    assert rec["positions"]["deaths"] == [[1, 2, 3, 4, 2, "d", 1]]
+
+
+def test_buy_types():
+    from tracker.parser import buy_type
+    assert buy_type(0, 5000, True) == "pistol"
+    assert buy_type(5, 900, True) == "eco"
+    assert buy_type(5, 2500, True) == "force"
+    assert buy_type(5, 3900, True) == "full"
+    assert buy_type(0, 900, False) == "eco"

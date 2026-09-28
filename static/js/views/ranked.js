@@ -1,7 +1,7 @@
 import { agent, map, tier } from "../content.js";
 import { ago, dayLabel, html, n0, n1, n2, pctS, RESULT } from "../format.js";
 import { byAgent, byMap, filterMatches, summarize } from "../stats.js";
-import { competitive, estimateMmr, insights, partyStats, roundStats, rrStats, tiltStats } from "../ranked-stats.js";
+import { competitive, economyStats, estimateMmr, insights, partyStats, rankGoal, roundStats, rrStats, tiltStats } from "../ranked-stats.js";
 
 const signed = (v, digits = 0) => (Number.isFinite(v) ? `${v > 0 ? "+" : ""}${v.toFixed(digits).replace(".", ",")}` : "–");
 const tierAt = (pts) => Math.max(0, Math.min(27, Math.floor(pts / 100)));
@@ -38,6 +38,10 @@ export function render(ctx) {
     <div class="row row-21">
       ${tipsCard(tips)}
       ${rrCard(rr, overall)}
+    </div>
+    <div class="row row-2">
+      ${goalCard(comp, mmr, profile, ctx.prefs.goal)}
+      ${economyCard(economyStats(comp))}
     </div>
     <div class="row row-3">
       ${roundsCard(rounds, overall)}
@@ -192,10 +196,10 @@ function matchLine(m, label) {
   </button>`;
 }
 
-function split(label, rate, detail, tip) {
+function split(label, rate, detail, tip, good = rate >= 0.5) {
   return html`<div class="split" data-tip="${tip || ""}">
-    <div class="split-head"><span>${label}</span><b class="${rate >= 0.5 ? "win" : "loss"}">${pctS(rate)}</b></div>
-    <div class="bar-track ${rate >= 0.5 ? "wr" : ""}"><span style="width:${Number.isFinite(rate) ? rate * 100 : 0}%"></span></div>
+    <div class="split-head"><span>${label}</span><b class="${good ? "win" : "loss"}">${pctS(rate)}</b></div>
+    <div class="bar-track ${good ? "wr" : ""}"><span style="width:${Number.isFinite(rate) ? rate * 100 : 0}%"></span></div>
     <div class="split-sub">${detail}</div>
   </div>`;
 }
@@ -289,5 +293,54 @@ function agentsCard(agents) {
       <img src="${agent(r.id).icon}" alt="">
       <div><b>${r.name}</b><span>${r.matches} · <em class="${r.winrate >= 0.5 ? "win" : "loss"}">${pctS(r.winrate)}</em> · ${n0(r.acs)} ACS · ${n1(r.kd)} K/D</span></div>
     </button>`)}</div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ goal & economy
+function goalCard(comp, mmr, profile, goal) {
+  const current = Number.isFinite(mmr?.visible) ? mmr.visible : (profile.rank?.tier || 0) * 100 + (profile.rank?.rr || 0);
+  const currentTier = tierAt(current);
+  const target = goal && goal > currentTier ? goal : Math.min(27, currentTier + 1);
+  const g = rankGoal(comp, current, target);
+  const tNow = tier(currentTier), tGoal = tier(target);
+  const floor = currentTier * 100;
+  const progress = Math.max(0, Math.min(1, (current - floor) / Math.max(1, target * 100 - floor)));
+  const options = [];
+  for (let t = Math.max(3, currentTier + 1); t <= 27; t++) options.push(t);
+  const pct = (v) => `${Math.round(v * 100)} %`;
+
+  return html`<div class="card accent goal-card">
+    <div class="card-head"><span class="card-title">Objectif de rang</span>
+      <label class="select"><select data-goal aria-label="Rang visé">${options.map((t) => html`<option value="${t}" ${t === target ? "selected" : ""}>${tier(t).name}</option>`)}</select></label>
+    </div>
+    <div class="goal-track">
+      <div class="goal-end"><img src="${tNow.icon}" alt=""><span>${tNow.name}</span></div>
+      <div class="goal-bar"><div class="bar-track wr" style="height:10px;border-radius:5px"><span style="width:${progress * 100}%"></span></div>
+        <div class="goal-left">${g.reached ? "Objectif atteint !" : `Il te manque ${Math.round(g.needed)} points (${rrAt(current)} RR actuellement)`}</div></div>
+      <div class="goal-end"><img src="${tGoal.icon}" alt=""><span style="color:${tGoal.color}">${tGoal.name}</span></div>
+    </div>
+    <div class="mmr-facts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div data-tip="Au winrate et aux gains/pertes de tes ${g.sample} dernières classées"><b>${g.reached ? "0" : Number.isFinite(g.games) ? `~${g.games}` : "∞"}</b><span>Parties à ce rythme</span></div>
+      <div data-tip="En dessous de ce winrate, tu perds des RR sur la durée"><b>${pct(g.breakEven)}</b><span>Winrate de maintien</span></div>
+      <div data-tip="Winrate nécessaire pour atteindre l'objectif en 50 parties"><b class="${g.winrate >= g.wrFor50 ? "win" : "loss"}">${pct(g.wrFor50)}</b><span>Winrate pour y être en 50</span></div>
+    </div>
+    <p class="muted small" style="margin-top:12px">Ton rythme actuel : ${pct(g.winrate)} de victoires, ${signed(g.gain, 1)} / ${signed(g.loss, 1)} RR, soit <b style="color:${g.perGame > 0 ? "var(--win)" : "var(--red)"}">${signed(g.perGame, 1)} RR par partie</b> en moyenne.
+      ${!Number.isFinite(g.games) && !g.reached ? "À ce rythme tu ne progresses pas : vise d'abord le winrate de maintien." : ""}</p>
+  </div>`;
+}
+
+function economyCard(e) {
+  if (!e.rounds) return html`<div class="card"><div class="card-head"><span class="card-title">Économie</span></div><div class="empty">Disponible après la prochaine synchro (tes matchs récents seront mis à jour).</div></div>`;
+  return html`<div class="card">
+    <div class="card-head"><span class="card-title">Économie</span><span class="muted small">${e.rounds} rounds analysés</span></div>
+    <div class="eco-grid">${e.buys.map((b) => html`<div class="eco" data-tip="${b.won} rounds gagnés sur ${b.played}">
+      <span>${b.label}</span><b class="${b.rate >= 0.5 ? "win" : "loss"}">${pctS(b.rate)}</b><small>${b.played} rounds</small>
+    </div>`)}</div>
+    ${split("Rounds perdus en full buy contre une éco", e.antiEco.rate, `${e.antiEco.lost} / ${e.antiEco.played} · idéalement sous 15 %`, "Ton équipe achète tout, l'adversaire joue une éco… et gagne quand même", !(e.antiEco.rate > 0.15))}
+    ${split("Rounds volés en éco/force contre un full buy", e.upsets.rate, `${e.upsets.won} / ${e.upsets.played} · au-dessus de 25 %, c'est très bien`, "", e.upsets.rate >= 0.25)}
+    <div class="mini-split" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <div data-tip="Crédits dépensés divisés par tes kills"><b>${n0(e.creditsPerKill)}</b><span>Crédits par kill</span></div>
+      <div><b>${n0(e.creditsPerRound)}</b><span>Crédits dépensés par round</span></div>
+    </div>
   </div>`;
 }
