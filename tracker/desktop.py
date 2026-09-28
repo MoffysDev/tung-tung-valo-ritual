@@ -259,15 +259,17 @@ def hide_window(title: str) -> bool:
 
 
 # ---------------------------------------------------------------------- global hotkey
-VK_F8, VK_F9 = 0x77, 0x78
-KEY_NAMES = {VK_F8: "F8", VK_F9: "F9"}
+MOD_ALT = 0x1
+# (modifiers, virtual key, label): Alt+O, or Alt+P if another app already owns it.
+# Alt has no default bind in Valorant; Alt+Z is avoided (NVIDIA overlay), Ctrl+letter too (Ctrl+X = cut…).
+SHORTCUTS = ((MOD_ALT, 0x4F, "Alt+O"), (MOD_ALT, 0x50, "Alt+P"))
 
 
 class Hotkey:
     """System-wide shortcut through RegisterHotKey — the standard Windows API used by Discord or OBS.
     It is not a keyboard hook: Windows only tells us when this exact key is pressed."""
 
-    def __init__(self, callback, keys=(VK_F9, VK_F8)):
+    def __init__(self, callback, keys=SHORTCUTS):
         self.callback = callback
         self.keys = keys
         self.key_name = ""
@@ -287,13 +289,13 @@ class Hotkey:
         user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
         MOD_NOREPEAT, WM_HOTKEY = 0x4000, 0x0312
         self._thread_id = kernel32.GetCurrentThreadId()
-        for vk in self.keys:
-            if user32.RegisterHotKey(None, 1, MOD_NOREPEAT, vk):
-                self.key_name = KEY_NAMES.get(vk, hex(vk))
+        for mods, vk, label in self.keys:
+            if user32.RegisterHotKey(None, 1, mods | MOD_NOREPEAT, vk):
+                self.key_name = label
                 break
         self._ready.set()
         if not self.key_name:
-            log.warning("Raccourci de l'overlay indisponible (F9 et F8 déjà pris par un autre logiciel)")
+            log.warning("Raccourci de l'overlay indisponible (Alt+O et Alt+P déjà pris par un autre logiciel)")
             return
         log.info("Raccourci de l'overlay : %s (thread %s)", self.key_name, self._thread_id)
         msg = wintypes.MSG()
