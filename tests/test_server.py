@@ -34,7 +34,8 @@ def test_rejects_foreign_host(client):
 
 def test_post_requires_custom_header(client):
     assert client.post("/api/sync").status_code == 403
-    assert client.post("/api/sync", headers={"X-Tracker": "1"}).status_code == 200
+    client.get("/")  # loading our own page grants the session used by mutating calls
+    assert client.post("/api/sync").status_code == 200
 
 
 def test_matches_etag_and_no_cors(client):
@@ -66,7 +67,16 @@ def test_overlay_page_and_hooks(tmp_path):
                      {"show": lambda: calls.append("show"), "overlay_hide": lambda: calls.append("hide")})
     client = app.test_client()
     assert b"Tung Tung Overlay" in client.get("/overlay").data
-    assert client.post("/api/show", headers={"X-Tracker": "1"}).status_code == 200
-    assert client.post("/api/overlay/hide", headers={"X-Tracker": "1"}).status_code == 200
-    assert client.post("/api/overlay/hide").status_code == 403  # needs our header
+    assert client.post("/api/show").status_code == 200  # session from the /overlay load above
+    assert client.post("/api/overlay/hide").status_code == 200
     assert calls == ["show", "hide"]
+
+
+def test_show_requires_ipc_token(tmp_path):
+    """The desktop app's self-wake call has no session, so it must present the random IPC token."""
+    store = Store(str(tmp_path / "db"))
+    app = create_app(Tracker(store, ServedStatic(), FakeRiot()), STATIC)
+    client = app.test_client()
+    assert client.post("/api/show").status_code == 403
+    token = app.config["IPC_SECRET"]
+    assert client.post("/api/show", headers={"X-Tracker": token}).status_code == 200

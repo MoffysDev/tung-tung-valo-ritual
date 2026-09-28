@@ -96,16 +96,17 @@ class SingleInstance:
             self._handle = None
             return False
 
-    def publish(self, port: int) -> None:
+    def publish(self, port: int, token: str) -> None:
         with open(self.info_path, "w", encoding="utf-8") as f:
-            json.dump({"port": port, "pid": os.getpid()}, f)
+            json.dump({"port": port, "pid": os.getpid(), "token": token}, f)
 
     def wake_existing(self) -> bool:
         """Ask the running instance to bring its window to the front."""
         try:
             with open(self.info_path, encoding="utf-8") as f:
-                port = int(json.load(f)["port"])
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/show", method="POST", headers={"X-Tracker": "1"})
+                info = json.load(f)
+            port, token = int(info["port"]), info["token"]
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/show", method="POST", headers={"X-Tracker": token})
             urllib.request.urlopen(req, timeout=3).close()
             return True
         except (OSError, ValueError, KeyError):
