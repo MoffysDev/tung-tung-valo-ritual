@@ -1,0 +1,50 @@
+# Tests à chaque push/PR. Sur un tag "v*" (ex. v2.0.0), compile TungTungTracker.exe
+# et le publie dans les Releases GitHub pour qu'on puisse le télécharger directement.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+      - run: node --test tests/stats.test.mjs
+
+  exe:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build TungTungTracker.exe
+        shell: cmd
+        run: build.bat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TungTungTracker
+          path: dist/TungTungTracker.exe
+      - name: Publier la release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/TungTungTracker.exe
+          generate_release_notes: true

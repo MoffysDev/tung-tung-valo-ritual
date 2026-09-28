@@ -27,7 +27,11 @@
 
 ## Getting started
 
-**Windows, easiest:** run `build.bat` once. It produces `dist\TungTungTracker.exe`, a single file you can put anywhere. Double-click it: the server starts in the background and the tracker opens in its own window (closing the window stops everything). Your data is stored in a `db\` folder next to the exe, so copy your existing `db\` there to keep your history.
+**Windows, easiest:** download `TungTungTracker.exe` from the [latest release](https://github.com/MoffysDev/tung-tung-valo-ritual/releases/latest) and double-click it. Nothing to install: the server starts in the background and the tracker opens in its own window (closing the window stops everything). Your data is stored in a `db\` folder next to the exe.
+
+> Windows SmartScreen may warn about an unsigned app on first launch: click *More info* → *Run anyway*.
+
+**Build the exe yourself:** run `build.bat` once. It produces `dist\TungTungTracker.exe`, a single file you can put anywhere. Double-click it: the server starts in the background and the tracker opens in its own window (closing the window stops everything). Your data is stored in a `db\` folder next to the exe, so copy your existing `db\` there to keep your history.
 
 Alternatively, `start.bat` runs it from source (creates a virtual environment, installs dependencies, opens the app).
 
@@ -80,6 +84,15 @@ tracker/
   server.py            Flask API + security headers
 static/                frontend (HTML/CSS/ES modules, no framework)
 tests/                 pytest (backend) + node:test (stats)
+```
+
+## Releasing
+
+Pushing a tag such as `v2.0.1` makes GitHub Actions run the tests, build `TungTungTracker.exe` on Windows and attach it to a new release:
+
+```bash
+git tag v2.0.1
+git push origin v2.0.1
 ```
 
 ## Development
