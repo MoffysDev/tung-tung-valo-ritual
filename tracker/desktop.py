@@ -267,7 +267,7 @@ class Hotkey:
     """System-wide shortcut through RegisterHotKey — the standard Windows API used by Discord or OBS.
     It is not a keyboard hook: Windows only tells us when this exact key is pressed."""
 
-    def __init__(self, callback, keys=(VK_F8, VK_F9)):
+    def __init__(self, callback, keys=(VK_F9, VK_F8)):
         self.callback = callback
         self.keys = keys
         self.key_name = ""
@@ -293,7 +293,7 @@ class Hotkey:
                 break
         self._ready.set()
         if not self.key_name:
-            log.warning("Raccourci de l'overlay indisponible (F8 et F9 déjà pris par un autre logiciel)")
+            log.warning("Raccourci de l'overlay indisponible (F9 et F8 déjà pris par un autre logiciel)")
             return
         log.info("Raccourci de l'overlay : %s (thread %s)", self.key_name, self._thread_id)
         msg = wintypes.MSG()
