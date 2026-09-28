@@ -307,7 +307,6 @@ function goalCard(comp, mmr, profile, goal) {
   const progress = Math.max(0, Math.min(1, (current - floor) / Math.max(1, target * 100 - floor)));
   const options = [];
   for (let t = Math.max(3, currentTier + 1); t <= 27; t++) options.push(t);
-  const pct = (v) => `${Math.round(v * 100)} %`;
 
   return html`<div class="card accent goal-card">
     <div class="card-head"><span class="card-title">Objectif de rang</span>
@@ -316,17 +315,46 @@ function goalCard(comp, mmr, profile, goal) {
     <div class="goal-track">
       <div class="goal-end"><img src="${tNow.icon}" alt=""><span>${tNow.name}</span></div>
       <div class="goal-bar"><div class="bar-track wr" style="height:10px;border-radius:5px"><span style="width:${progress * 100}%"></span></div>
-        <div class="goal-left">${g.reached ? "Objectif atteint !" : `Il te manque ${Math.round(g.needed)} points (${rrAt(current)} RR actuellement)`}</div></div>
+        <div class="goal-left">${g.reached ? "Objectif atteint !" : html`Il te faut <b style="color:var(--text)">+${Math.round(g.needed)} RR</b> (tu es à ${rrAt(current)} RR)`}</div></div>
       <div class="goal-end"><img src="${tGoal.icon}" alt=""><span style="color:${tGoal.color}">${tGoal.name}</span></div>
     </div>
-    <div class="mmr-facts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-      <div data-tip="Au winrate et aux gains/pertes de tes ${g.sample} dernières classées"><b>${g.reached ? "0" : Number.isFinite(g.games) ? `~${g.games}` : "∞"}</b><span>Parties à ce rythme</span></div>
-      <div data-tip="En dessous de ce winrate, tu perds des RR sur la durée"><b>${pct(g.breakEven)}</b><span>Winrate de maintien</span></div>
-      <div data-tip="Winrate nécessaire pour atteindre l'objectif en 50 parties"><b class="${g.winrate >= g.wrFor50 ? "win" : "loss"}">${pct(g.wrFor50)}</b><span>Winrate pour y être en 50</span></div>
-    </div>
-    <p class="muted small" style="margin-top:12px">Ton rythme actuel : ${pct(g.winrate)} de victoires, ${signed(g.gain, 1)} / ${signed(g.loss, 1)} RR, soit <b style="color:${g.perGame > 0 ? "var(--win)" : "var(--red)"}">${signed(g.perGame, 1)} RR par partie</b> en moyenne.
-      ${!Number.isFinite(g.games) && !g.reached ? "À ce rythme tu ne progresses pas : vise d'abord le winrate de maintien." : ""}</p>
+    ${g.reached ? "" : goalPlan(g, tGoal)}
   </div>`;
+}
+
+/** Plain-language plan: RR per win/loss, wins in a row, and what 10 games can give. */
+function goalPlan(g, tGoal) {
+  const gain = Math.round(g.gain), loss = Math.round(g.loss);
+  const needed = Math.ceil(g.needed);
+  const streak = Math.ceil(needed / Math.max(1, gain));
+  const net = (w) => w * gain + (10 - w) * loss;
+  const minUp = [...Array(11).keys()].find((w) => net(w) > 0) ?? 10;
+  const minGoal = [...Array(11).keys()].find((w) => net(w) >= needed);
+  const pace = Math.round(g.winrate * 10);
+  const rows = [];
+  for (let w = Math.max(0, Math.min(minUp, pace) - 1); w <= 10; w++) {
+    rows.push(w);
+    if (minGoal !== undefined && w >= minGoal + 1) break;
+  }
+  const maxAbs = Math.max(...rows.map((w) => Math.abs(net(w))), needed);
+
+  return html`<div class="goal-facts">
+      <div><b class="win">+${gain} RR</b><span>en moyenne par victoire</span></div>
+      <div><b class="loss">${loss} RR</b><span>en moyenne par défaite</span></div>
+      <div data-tip="${streak} × ${gain} RR = ${streak * gain} RR"><b>${streak} victoire${streak > 1 ? "s" : ""}</b><span>d'affilée pour passer ${tGoal.name}</span></div>
+    </div>
+    <div class="card-title" style="margin:16px 0 8px">Sur tes 10 prochaines parties, selon tes victoires</div>
+    <div class="goal-table">${rows.map((w) => {
+      const n = net(w);
+      return html`<div class="goal-row ${w === pace ? "pace" : ""}" data-tip="${w} × ${gain} RR ${10 - w ? `− ${10 - w} × ${Math.abs(loss)} RR` : ""} = ${n > 0 ? "+" : ""}${n} RR">
+        <span class="goal-wl">${w} victoire${w > 1 ? "s" : ""} · ${10 - w} défaite${10 - w > 1 ? "s" : ""}${w === pace ? html` <em>ton rythme</em>` : ""}</span>
+        <div class="goal-rowbar"><span class="${n >= 0 ? "up" : "down"}" style="width:${(Math.abs(n) / maxAbs) * 50}%"></span></div>
+        <b class="${n > 0 ? "win" : n < 0 ? "loss" : ""}">${n > 0 ? "+" : ""}${n} RR</b>
+        <span class="goal-flag">${n >= needed ? html`<span class="pill green">${tGoal.name} ✓</span>` : ""}</span>
+      </div>`;
+    })}</div>
+    <p class="goal-summary">En résumé : il faut gagner <b>au moins ${minUp} parties sur 10</b> pour monter${minGoal !== undefined ? html`, et <b>${minGoal} sur 10</b> pour passer ${tGoal.name} en 10 parties` : ""}.
+      En ce moment tu en gagnes environ <b class="${pace >= minUp ? "win" : "loss"}">${pace} sur 10</b>${pace < minUp ? ", donc tu perds un peu de RR à chaque série" : ""}.</p>`;
 }
 
 function economyCard(e) {
