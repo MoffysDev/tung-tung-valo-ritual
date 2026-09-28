@@ -32,6 +32,7 @@ FROZEN = getattr(sys, "frozen", False)
 BUNDLE = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.dirname(sys.executable) if FROZEN else BUNDLE
 TITLE = "Tung Tung Tracker"
+OVERLAY_TITLE = "Tung Tung Overlay"
 
 
 def free_port(preferred: int) -> int:
@@ -74,7 +75,7 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
         import webview
     except ImportError:
         return False
-    from tracker.desktop import Tray, start_recap_watcher
+    from tracker.desktop import Hotkey, Tray, hide_window, show_without_focus, start_recap_watcher
 
     quitting = threading.Event()
     holder: dict = {}
@@ -102,17 +103,28 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
         meta["overlay"] = not overlay_enabled()
         tracker.store.mark("meta")
 
+    overlay_wake = threading.Event()
+
     def show_overlay():
         overlay_state["forced"] = True
         overlay_state["dismissed"] = None
+        overlay_wake.set()
 
     def hide_overlay():
         live = tracker.live
         overlay_state["dismissed"] = live["match_id"] if live else "menus"
         overlay_state["forced"] = False
+        overlay_wake.set()
+
+    def toggle_overlay_visible():
+        logging.getLogger("app").info("overlay : %s", "masquer" if overlay_state["visible"] else "afficher")
+        hide_overlay() if overlay_state["visible"] else show_overlay()
+
+    hotkey = Hotkey(toggle_overlay_visible)
+    hotkey_name = hotkey.start()
 
     tray = Tray(TITLE, on_open=show, on_sync=tracker.request_sync, on_quit=quit_app,
-                overlay={"enabled": overlay_enabled, "toggle": toggle_overlay, "show": show_overlay})
+                overlay={"enabled": overlay_enabled, "toggle": toggle_overlay, "show": toggle_overlay_visible, "key": hotkey_name})
     has_tray = tray.start()
     logging.getLogger("app").info("icône de notification : %s", "active" if has_tray else "indisponible")
     hooks["show"] = show
@@ -131,7 +143,7 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
         return False
 
     window.events.closing += on_closing
-    overlay = webview.create_window("Tung Tung Overlay", f"{url}/overlay", width=470, height=580, x=16, y=140,
+    overlay = webview.create_window(OVERLAY_TITLE, f"{url}/overlay", width=470, height=580, x=16, y=140,
                                     frameless=True, on_top=True, hidden=True, resizable=True,
                                     min_size=(380, 260), background_color="#080e14")
     holder["overlay"] = overlay
@@ -144,13 +156,18 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
             wanted = (overlay_state["forced"] or (live is not None and overlay_enabled())) and overlay_state["dismissed"] != key
             if wanted != overlay_state["visible"]:
                 try:
-                    overlay.show() if wanted else overlay.hide()
+                    # Never take the focus away from the game.
+                    if wanted:
+                        show_without_focus(OVERLAY_TITLE) or overlay.show()
+                    else:
+                        hide_window(OVERLAY_TITLE) or overlay.hide()
                     overlay_state["visible"] = wanted
                 except Exception:  # window not ready yet
-                    pass
+                    logging.getLogger("app").debug("overlay pas encore prêt", exc_info=True)
             if live is None and overlay_state["dismissed"] not in (None, "menus"):
                 overlay_state["dismissed"] = None  # next match shows it again
-            quitting.wait(1.5)
+            overlay_wake.wait(1.5)
+            overlay_wake.clear()
 
     if overlay_preview:
         show_overlay()
@@ -162,6 +179,8 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
         webview.start()  # blocks until the window is really closed (Quitter)
     finally:
         stop_watch.set()
+        overlay_wake.set()
+        hotkey.stop()
         tray.stop()
     return True
 

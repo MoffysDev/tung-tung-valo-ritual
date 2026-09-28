@@ -139,7 +139,7 @@ class Tray:
             pystray.MenuItem("Overlay pendant les parties", lambda: self.overlay and self.overlay["toggle"](),
                              checked=lambda _item: bool(self.overlay and self.overlay["enabled"]()),
                              visible=self.overlay is not None),
-            pystray.MenuItem("Afficher l'overlay maintenant", lambda: self.overlay and self.overlay["show"](),
+            pystray.MenuItem(self._overlay_label(), lambda: self.overlay and self.overlay["show"](),
                              visible=self.overlay is not None),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Lancer au démarrage de Windows", toggle_autostart,
@@ -150,6 +150,10 @@ class Tray:
         self.icon = pystray.Icon(APP_NAME, icon_image(64), self.title, menu)
         self.icon.run_detached()
         return True
+
+    def _overlay_label(self) -> str:
+        key = (self.overlay or {}).get("key")
+        return f"Afficher / masquer l'overlay ({key})" if key else "Afficher / masquer l'overlay"
 
     def notify(self, title: str, message: str) -> None:
         if not self.icon:
@@ -202,3 +206,106 @@ def watch_recaps(tracker, tray: Tray, stop: threading.Event) -> None:
 def start_recap_watcher(tracker, tray: Tray, stop: threading.Event) -> None:
     threading.Thread(target=watch_recaps, args=(tracker, tray, stop), name="recap-notify", daemon=True).start()
 
+
+
+# ---------------------------------------------------------------------- windows without stealing focus
+def _own_window(title: str) -> int:
+    """Handle of this process' top-level window with that exact title (0 if none)."""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    found = ctypes.c_void_p(0)
+    pid = os.getpid()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid:
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == title:
+                found.value = hwnd
+                return False
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found.value or 0
+
+
+def show_without_focus(title: str) -> bool:
+    """Show a window on top WITHOUT activating it, so the game keeps the keyboard and mouse."""
+    hwnd = _own_window(title)
+    if not hwnd:
+        return False
+    import ctypes
+    user32 = ctypes.windll.user32
+    SW_SHOWNOACTIVATE, HWND_TOPMOST = 4, -1
+    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE, SWP_SHOWWINDOW = 0x1, 0x2, 0x10, 0x40
+    user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
+    return True
+
+
+def hide_window(title: str) -> bool:
+    hwnd = _own_window(title)
+    if hwnd:
+        import ctypes
+        ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    return bool(hwnd)
+
+
+# ---------------------------------------------------------------------- global hotkey
+VK_F8, VK_F9 = 0x77, 0x78
+KEY_NAMES = {VK_F8: "F8", VK_F9: "F9"}
+
+
+class Hotkey:
+    """System-wide shortcut through RegisterHotKey — the standard Windows API used by Discord or OBS.
+    It is not a keyboard hook: Windows only tells us when this exact key is pressed."""
+
+    def __init__(self, callback, keys=(VK_F8, VK_F9)):
+        self.callback = callback
+        self.keys = keys
+        self.key_name = ""
+        self._thread_id = 0
+        self._ready = threading.Event()
+
+    def start(self) -> str:
+        if sys.platform != "win32":
+            return ""
+        threading.Thread(target=self._run, name="hotkey", daemon=True).start()
+        self._ready.wait(2)
+        return self.key_name
+
+    def _run(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        MOD_NOREPEAT, WM_HOTKEY = 0x4000, 0x0312
+        self._thread_id = kernel32.GetCurrentThreadId()
+        for vk in self.keys:
+            if user32.RegisterHotKey(None, 1, MOD_NOREPEAT, vk):
+                self.key_name = KEY_NAMES.get(vk, hex(vk))
+                break
+        self._ready.set()
+        if not self.key_name:
+            log.warning("Raccourci de l'overlay indisponible (F8 et F9 déjà pris par un autre logiciel)")
+            return
+        log.info("Raccourci de l'overlay : %s (thread %s)", self.key_name, self._thread_id)
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            if msg.message == WM_HOTKEY:
+                try:
+                    self.callback()
+                except Exception:
+                    log.exception("raccourci overlay")
+        user32.UnregisterHotKey(None, 1)
+
+    def stop(self) -> None:
+        if self._thread_id:
+            import ctypes
+            ctypes.windll.user32.PostThreadMessageW(self._thread_id, 0x0012, 0, 0)  # WM_QUIT
