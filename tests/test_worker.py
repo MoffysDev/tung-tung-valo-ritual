@@ -43,6 +43,7 @@ class FakeRiot:
         self.details = {}
         self.name_calls = []
         self.other_history = {}
+        self.rate_limited_until = 0.0
         self.fallback_version = None
 
     def connect(self):
@@ -258,3 +259,18 @@ def test_switches_database_when_another_account_logs_in(tmp_path, monkeypatch):
     tracker._tick()
     assert tracker.store.owner == "me" and "x" not in tracker.store.data["matches"]
     assert "x" in accounts.open("someone-else").data["matches"]  # nothing lost
+
+
+def test_rate_limit_on_names_keeps_the_roster_and_retries(setup):
+    from tracker.riot import RateLimited
+    store, riot, tracker = setup
+    riot.phase = "PREGAME"
+    real_names = riot.names
+    riot.names = lambda puuids: (_ for _ in ()).throw(RateLimited(30))
+    tracker._tick()
+    players = {p["puuid"]: p for p in tracker.live["players"]}
+    assert set(players) == {"me", "friend", "ghost"}  # roster still shown
+    assert players["friend"]["name"] == ""  # not resolved yet...
+    riot.names = real_names
+    tracker._tick()
+    assert {p["puuid"]: p for p in tracker.live["players"]}["friend"]["name"] == "Friend#1"  # ...and retried

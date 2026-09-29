@@ -128,6 +128,7 @@ class Tracker:
                 if self.status["error"] and self.riot.connected:
                     self._publish(error=None)
             except RateLimited as exc:
+                log.warning("Riot : trop de requêtes, pause de %d s", exc.retry_after)
                 self._publish(error=str(exc))
                 delay = max(delay, min(exc.retry_after, 60))
             except NotRunning:
@@ -394,8 +395,11 @@ class Tracker:
         if not live:
             self._live_fetched = {k: v for k, v in self._live_fetched.items() if k.startswith(match_id)}
         # Agent select changes quickly; in game the roster is fixed.
-        if live and live.get("phase") == phase and phase == "INGAME" and now - self._live_fetched.get(key, 0) < 60:
-            return
+        if live and live.get("phase") == phase and phase == "INGAME":
+            incomplete = any(not p["is_me"] and ((not p["incognito"] and not p["name"]) or not (p.get("rank") or {}).get("tier"))
+                             for p in live["players"])
+            if now - self._live_fetched.get(key, 0) < (10 if incomplete else 60):
+                return
 
         if phase == "PREGAME":
             match = riot.pregame_match(match_id) or {}
@@ -474,10 +478,10 @@ class Tracker:
             pid = p["puuid"]
             try:
                 p["rank"] = self._rank_of(pid)
-            except RateLimited:
-                raise
-            except RiotError:
-                p["rank"] = (self._player_cache.get(pid) or (0, {}))[1] or {"tier": 0}
+            except RiotError:  # includes rate limits: keep what we know and retry on the next rebuild
+                cached = (self._player_cache.get(pid) or (0, None))[1]
+                known_tier = self._known_tier(pid)
+                p["rank"] = cached or ({"tier": known_tier, "rr": None, "source": "match"} if known_tier else {"tier": 0})
             name = self._name_cache.get(pid, "") or (known.get(pid) or {}).get("name", "")
             if p["is_me"]:
                 prof = self.store.data["profile"]
@@ -535,9 +539,14 @@ class Tracker:
         if not live:
             return
         now = time.time()
+        if now < self.riot.rate_limited_until + 90:
+            return  # Riot just asked us to slow down: names and ranks come first
+        pending = any(not p["is_me"] and not p["incognito"] and not p["name"] for p in live["players"])
+        if pending:
+            return
         todo = [p for p in sorted(live["players"], key=lambda p: p["is_ally"])
                 if not p["is_me"] and now - self._recent_cache.get(p["puuid"], (0, None))[0] > self.RECENT_TTL]
-        for player in todo[:2]:  # ~2 players per tick keeps well under Riot's rate limit
+        for player in todo[:1]:  # one player per tick keeps well under Riot's rate limit
             stats = self._recent_of(player["puuid"], live.get("queue") or "")
             self._recent_cache[player["puuid"]] = (time.time(), stats)
             with self._lock:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import socket
 import sys
@@ -57,7 +58,8 @@ def setup_logging(data_dir: str, verbose: bool) -> None:
             pass
         handlers.append(logging.StreamHandler())
     os.makedirs(data_dir, exist_ok=True)
-    handlers.append(logging.FileHandler(os.path.join(data_dir, "tracker.log"), mode="w", encoding="utf-8"))
+    # Kept across launches (rotated at 1 Mo) so a bad game can still be diagnosed after a restart.
+    handlers.append(RotatingFileHandler(os.path.join(data_dir, "tracker.log"), maxBytes=1_000_000, backupCount=2, encoding="utf-8"))
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(message)s",
