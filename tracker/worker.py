@@ -16,8 +16,9 @@ log = logging.getLogger(__name__)
 
 
 class Tracker:
-    def __init__(self, store: Store, static: StaticData, riot: RiotClient | None = None):
+    def __init__(self, store: Store, static: StaticData, riot: RiotClient | None = None, accounts=None):
         self.store = store
+        self.accounts = accounts  # storage.Accounts: one database per Riot account
         self.static = static
         self.riot = riot or RiotClient()
         self._lock = threading.RLock()
@@ -47,6 +48,7 @@ class Tracker:
         self._season_starts: dict[str, int] = {}
         self._player_cache: dict[str, tuple[float, dict]] = {}
         self._name_cache: dict[str, str] = {}
+        self._warned: set[str] = set()
         self._recent_cache: dict[str, tuple[float, dict | None]] = {}  # puuid -> recent form of live players
         self._details_cache: OrderedDict[str, dict] = OrderedDict()   # match details shared between players
         self._season_name: str | None = None
@@ -155,6 +157,8 @@ class Tracker:
         if not self.riot.connect():
             self._set_offline()
             return C.TICK_OFFLINE
+        if self.accounts and self.riot.puuid and self.riot.puuid != self.store.owner:
+            self._switch_account(self.riot.puuid)
         now = time.time()
         presences = self._safe_presences()
         mine = next((p for p in presences if (p.get("puuid") or "").lower() == self.riot.puuid), None)
@@ -201,6 +205,23 @@ class Tracker:
 
         return {"PREGAME": C.TICK_PREGAME, "INGAME": C.TICK_INGAME}.get(phase, C.TICK_MENUS)
 
+    def _switch_account(self, puuid: str) -> None:
+        """Another Riot account is logged in: load its own database."""
+        previous = self.store.owner
+        self.store.save()
+        store = self.accounts.open(puuid)
+        with self._lock:
+            self.store = store
+            self.live = None
+            self.current_loadout = {}
+            self.revision += 1
+        self._next_profile = self._next_history = 0
+        self._last_phase = None
+        self._failures.clear()
+        if previous:
+            log.info("Changement de compte : %s -> %s", previous[:8], puuid[:8])
+            self._event("account", "Autre compte détecté : ses stats sont chargées")
+
     def _safe_presences(self) -> list[dict]:
         try:
             return self.riot.presences()
@@ -219,10 +240,15 @@ class Tracker:
     def _load_season(self) -> None:
         try:
             content = self.riot.content() or {}
-        except RiotError:
+        except RateLimited:
+            raise
+        except RiotError as exc:
+            log.warning("Saisons Riot indisponibles (%s) : l'acte en cours sera deviné", exc)
             self._season = ""
             return
         seasons = content.get("Seasons") or []
+        if not seasons:
+            log.warning("Saisons Riot : réponse vide (endpoint content-service modifié ?)")
         for s in seasons:
             start = s.get("StartTime")
             if s.get("ID") and start:
@@ -248,12 +274,46 @@ class Tracker:
             self._season_name = " · ".join(parts + [active[0].get("Name") or ""]).strip(" ·")
 
     def _rank_of(self, puuid: str, force: bool = False) -> dict:
+        """Current rank, with fallbacks: MMR API -> last competitive update -> last rank seen in a match."""
         cached = self._player_cache.get(puuid)
         if cached and not force and time.time() - cached[0] < C.PLAYER_CACHE_TTL:
             return cached[1]
-        rank = parse_mmr(self.riot.mmr(puuid) or {}, self._season or None, self._season_starts)
+        data = self.riot.mmr(puuid) or {}
+        if not data.get("QueueSkills") and not data.get("LatestCompetitiveUpdate"):
+            self._warn_once("mmr", "API des rangs (mmr) : réponse vide, utilisation des sources de secours")
+        rank = parse_mmr(data, self._season or None, self._season_starts)
+        if not rank.get("tier"):
+            try:
+                update = ((self.riot.competitive_updates(1, puuid=puuid) or {}).get("Matches") or [{}])[0]
+            except RateLimited:
+                raise
+            except RiotError:
+                update = {}
+            if update.get("TierAfterUpdate"):
+                rank.update(tier=int(update["TierAfterUpdate"]), rr=int(update.get("RankedRatingAfterUpdate") or 0))
+            else:
+                known = self._known_tier(puuid)
+                if known:
+                    rank.update(tier=known, rr=None, source="match")
+        rank["peak"] = max(rank.get("peak") or 0, rank.get("tier") or 0)
         self._player_cache[puuid] = (time.time(), rank)
         return rank
+
+    def _known_tier(self, puuid: str) -> int:
+        """Rank of a player in the latest competitive match we recorded with them."""
+        best, when = 0, -1
+        for m in self.store.data["matches"].values():
+            if m.get("queue") != "competitive" or (m.get("start") or 0) <= when:
+                continue
+            for s in m.get("scoreboard") or []:
+                if s.get("puuid") == puuid and s.get("rank_id"):
+                    best, when = s["rank_id"], m.get("start") or 0
+        return best or int((self.store.data["known_players"].get(puuid) or {}).get("rank_id") or 0)
+
+    def _warn_once(self, key: str, message: str) -> None:
+        if key not in self._warned:
+            self._warned.add(key)
+            log.warning(message)
 
     def _refresh_profile(self) -> None:
         riot = self.riot
@@ -394,8 +454,10 @@ class Tracker:
                 for entry in riot.names(missing):
                     if entry.get("GameName"):
                         self._name_cache[entry["Subject"].lower()] = f"{entry['GameName']}#{entry.get('TagLine', '')}"
+            except RateLimited:
+                log.warning("name-service : limite Riot atteinte, pseudos repris du cache")
             except RiotError as exc:
-                log.debug("name-service: %s", exc)
+                self._warn_once("names", f"name-service indisponible ({exc}) : pseudos repris du cache")
 
         # Parties: presences only cover friends, which is enough to spot your own premade.
         parties = {}
@@ -416,7 +478,7 @@ class Tracker:
                 raise
             except RiotError:
                 p["rank"] = (self._player_cache.get(pid) or (0, {}))[1] or {"tier": 0}
-            name = self._name_cache.get(pid, "")
+            name = self._name_cache.get(pid, "") or (known.get(pid) or {}).get("name", "")
             if p["is_me"]:
                 prof = self.store.data["profile"]
                 name = f"{prof.get('name', '')}#{prof.get('tag', '')}" if prof.get("name") else name
@@ -440,6 +502,14 @@ class Tracker:
                     entry["seen"] = int(now * 1000)
                     self.store.mark("known_players")
 
+        summary_key = f"{match_id}:{phase}"
+        if summary_key not in self._warned:
+            self._warned.add(summary_key)
+            others = [p for p in players if not p["is_me"]]
+            log.info("%s : %d joueurs, %d masqués (mode streamer), %d pseudos, %d rangs trouvés",
+                     "Sélection d'agent" if phase == "PREGAME" else "Partie en cours", len(others),
+                     sum(p["incognito"] for p in others), sum(bool(p["name"]) for p in others),
+                     sum(bool((p.get("rank") or {}).get("tier")) for p in others))
         with self._lock:
             self.live = {
                 "match_id": match_id,
@@ -476,6 +546,9 @@ class Tracker:
                 for p in live["players"]:
                     if p["puuid"] == player["puuid"]:
                         p["recent"] = stats
+                        if stats and stats.get("tier") and not (p.get("rank") or {}).get("tier"):
+                            p["rank"] = dict(p.get("rank") or {}, tier=stats["tier"], rr=None, source="match")
+                            self._player_cache[p["puuid"]] = (time.time(), p["rank"])
                 live["updated"] = int(time.time() * 1000)
                 self.revision += 1
 

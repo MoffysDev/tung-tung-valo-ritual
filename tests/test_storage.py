@@ -83,3 +83,36 @@ def test_save_is_atomic_and_roundtrips(tmp_path):
     assert v >= 1
     assert not any(n.endswith(".tmp") for n in os.listdir(tmp_path / "db"))
     assert Store(str(tmp_path / "db")).data["matches"]["x"]["v"] == 2
+
+
+def test_accounts_adopt_legacy_database_and_switch(tmp_path):
+    from tracker.storage import Accounts
+    root = tmp_path / "db"
+    root.mkdir()
+    write(root, "matches", {"m1": {"v": 4, "id": "m1"}})
+    write(root, "profile", {"puuid": "AAA", "name": "Main"})
+    write(root, "meta", {"schema": SCHEMA})
+    (root / "content-cache.json").write_text("{}", encoding="utf-8")
+
+    accounts = Accounts(str(root))
+    store = accounts.initial()
+    assert store.owner == "aaa" and "m1" in store.data["matches"]
+    assert os.path.exists(root / "accounts" / "aaa" / "matches.json")
+    assert not os.path.exists(root / "matches.json")
+    assert os.path.exists(root / "content-cache.json")  # shared cache stays at the root
+
+    other = accounts.open("BBB")
+    assert other.owner == "bbb" and other.data["matches"] == {}
+    assert Accounts(str(root)).initial().owner == "bbb"  # remembers the last account
+    assert {a["puuid"] for a in accounts.list()} == {"aaa", "bbb"}
+
+
+def test_accounts_unknown_owner_is_adopted_on_first_login(tmp_path):
+    from tracker.storage import Accounts
+    root = tmp_path / "db"
+    root.mkdir()
+    write(root, "matches", {"m1": {"v": 4, "id": "m1"}})
+    accounts = Accounts(str(root))
+    first = accounts.initial()
+    assert first.owner is None and "m1" in first.data["matches"]
+    assert "m1" in accounts.open("ccc").data["matches"]

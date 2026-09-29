@@ -245,3 +245,16 @@ def test_recent_form_of_a_live_player(setup):
     assert (recent["k"], recent["d"], recent["a"], recent["kd"], recent["acs"]) == (1, 2, 2, 0.5, 133)
     assert recent["agent"] == "agent-b"
     assert tracker._recent_of("nobody", "competitive") is None
+
+
+def test_switches_database_when_another_account_logs_in(tmp_path, monkeypatch):
+    from tracker.storage import Accounts
+    monkeypatch.setattr(C, "DETAILS_SPACING", 0)
+    accounts = Accounts(str(tmp_path / "db"))
+    old = accounts.open("someone-else")
+    old.data["matches"]["x"] = {"v": 4, "id": "x"}
+    old.mark("matches")
+    tracker = Tracker(old, FakeStatic(), FakeRiot(), accounts=accounts)
+    tracker._tick()
+    assert tracker.store.owner == "me" and "x" not in tracker.store.data["matches"]
+    assert "x" in accounts.open("someone-else").data["matches"]  # nothing lost

@@ -79,14 +79,14 @@ def create_app(tracker: Tracker, static_dir: str, hooks: dict | None = None) -> 
     def state():
         payload = tracker.snapshot()
         payload["app_version"] = __version__
-        payload["matches_version"] = f"{boot}-{payload['matches_version']}"
+        payload["matches_version"] = f"{boot}-{tracker.store.owner or 'x'}-{payload['matches_version']}"
         return json_response(payload)
 
     @app.get("/api/matches")
     def matches():
         store = tracker.store
         with store.lock:
-            version = f"{boot}-{store.matches_version}"
+            version = f"{boot}-{store.owner or 'x'}-{store.matches_version}"
             if request.if_none_match.contains(version):
                 return Response(status=304, headers={"ETag": f'"{version}"'})
             payload = {

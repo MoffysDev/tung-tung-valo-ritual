@@ -19,7 +19,7 @@ function rowHtml(p) {
       <div class="name ${p.name || p.is_me ? "" : "hidden"}">${name}</div>
       <div class="meta">
         <img src="${t.small || t.icon}" alt=""><span style="color:${t.color}">${t.name}</span>
-        ${r.tier >= 3 ? html`<span class="dim">${r.rr ?? 0} RR</span>` : ""}
+        ${r.tier >= 3 && r.rr != null ? html`<span class="dim">${r.rr} RR</span>` : ""}
         ${r.act_games ? html`<span class="dim">· ${Math.round((r.act_wins / r.act_games) * 100)}% V</span>` : ""}
         ${p.encounters ? html`<span class="met">déjà croisé ${p.encounters.count}×</span>` : ""}
       </div>

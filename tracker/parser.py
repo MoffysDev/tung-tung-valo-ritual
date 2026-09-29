@@ -414,6 +414,8 @@ def player_line(data: dict, puuid: str) -> dict | None:
     team = next((t for t in data.get("teams") or [] if t.get("teamId") == p.get("teamId")), {})
     return {
         "queue": queue_of(info),
+        "start": int(info.get("gameStartMillis") or 0),
+        "tier": int(p.get("competitiveTier") or 0),
         "agent": _low(p.get("characterId")),
         "won": bool(team.get("won")),
         "k": int(st.get("kills") or 0), "d": int(st.get("deaths") or 0), "a": int(st.get("assists") or 0),
@@ -439,4 +441,7 @@ def summarize_recent(lines: list[dict]) -> dict | None:
         "hs": round(sum(x["hs"] for x in lines) / hits * 100) if hits else None,
         "agent": agents.most_common(1)[0][0],
         "results": "".join("V" if x["won"] else "D" for x in lines),
+        # Rank seen in their most recent competitive game (fallback when the MMR API is down)
+        "tier": next((x["tier"] for x in sorted(lines, key=lambda x: -x.get("start", 0))
+                      if x.get("queue") == "competitive" and x.get("tier")), 0),
     }

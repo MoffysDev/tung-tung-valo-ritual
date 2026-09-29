@@ -24,7 +24,7 @@ from tracker import __version__
 from tracker.desktop import SingleInstance
 from tracker.server import create_app
 from tracker.static_data import StaticData
-from tracker.storage import Store
+from tracker.storage import Accounts
 from tracker.worker import Tracker
 
 FROZEN = getattr(sys, "frozen", False)
@@ -93,14 +93,13 @@ def open_window(url: str, tracker: Tracker, hooks: dict, minimized: bool, overla
                 holder[key].destroy()
 
     # ---- in-game overlay: a separate always-on-top window, never touches the game process
-    meta = tracker.store.data["meta"]
     overlay_state = {"visible": False, "dismissed": None, "forced": False}
 
     def overlay_enabled() -> bool:
-        return meta.get("overlay", True)
+        return tracker.store.data["meta"].get("overlay", True)  # store changes with the account
 
     def toggle_overlay():
-        meta["overlay"] = not overlay_enabled()
+        tracker.store.data["meta"]["overlay"] = not overlay_enabled()
         tracker.store.mark("meta")
 
     overlay_wake = threading.Event()
@@ -207,9 +206,10 @@ def main() -> None:
     setup_logging(args.data, args.verbose)
     log = logging.getLogger("app")
 
-    store = Store(args.data)
+    accounts = Accounts(args.data)  # one database per Riot account, picked automatically
+    store = accounts.initial()
     static = StaticData(os.path.join(args.data, "content-cache.json"))
-    tracker = Tracker(store, static)
+    tracker = Tracker(store, static, accounts=accounts)
     if args.offline:
         threading.Thread(target=lambda: static.is_stale() and static.refresh(), daemon=True).start()
     else:
@@ -239,7 +239,7 @@ def main() -> None:
     finally:
         server.shutdown()
         tracker.stop()
-        store.save()
+        tracker.store.save()
 
 if __name__ == "__main__":
     main()

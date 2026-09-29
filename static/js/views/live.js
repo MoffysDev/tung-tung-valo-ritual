@@ -87,7 +87,7 @@ function player(p, enemy, ctx) {
     <div class="player-rank" title="${peak ? `Peak : ${peak.name}` : ""}">
       <img src="${t.icon}" alt="">
       <b style="color:${t.color}">${t.name}</b>
-      <small>${rank.tier >= 3 ? `${rank.rr || 0} RR` : ""}${peak ? ` · peak ${peak.name}` : ""}</small>
+      <small>${rank.tier >= 3 && rank.rr != null ? `${rank.rr} RR` : ""}${peak ? ` · peak ${peak.name}` : ""}</small>
     </div>
   </div>`;
 }

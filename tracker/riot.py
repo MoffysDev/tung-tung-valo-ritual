@@ -68,6 +68,38 @@ def default_lockfile_path() -> str | None:
     return os.path.join(base, "Riot Games", "Riot Client", "Config", "lockfile") if base else None
 
 
+def default_log_path() -> str | None:
+    base = os.getenv("LOCALAPPDATA")
+    return os.path.join(base, "VALORANT", "Saved", "Logs", "ShooterGame.log") if base else None
+
+
+LOG_VERSION_RE = re.compile(r"CI server version: (release-\d+\.\d+-shipping-\d+-\d+)")
+
+
+def game_log_version(path: str | None) -> str | None:
+    """Exact client version from the game's own log ("CI server version: ..."), written at every launch.
+    Riot answers some endpoints (ranks) with empty data when the version header is outdated."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            head = f.read(4_000_000)
+    except OSError:
+        return None
+    found = LOG_VERSION_RE.findall(head)
+    return found[-1] if found else None
+
+
+def _version_key(version: str | None) -> tuple:
+    nums = re.findall(r"\d+", version or "")
+    # release-13.06-shipping-18-5590001 -> (13, 6, 5590001): the changelist orders builds of a branch
+    return (int(nums[0]), int(nums[1]), int(nums[-1])) if len(nums) >= 4 else (0, 0, 0)
+
+
+def newer_version(a: str | None, b: str | None) -> bool:
+    return _version_key(a) > _version_key(b)
+
+
 def resolve_region(region: str) -> tuple[str, str]:
     """Return (glz_region, shard) for a Riot region string."""
     region = (region or "").lower()
@@ -102,8 +134,10 @@ def presence_party(presence: dict) -> str | None:
 
 
 class RiotClient:
-    def __init__(self, lockfile_path: str | None = None):
+    def __init__(self, lockfile_path: str | None = None, log_path: str | None = None):
         self.lockfile_path = lockfile_path or default_lockfile_path()
+        self.log_path = log_path or default_log_path()
+        self._version_checked = 0.0
         self.fallback_version: str | None = None
         self._lockfile_mtime: float | None = None
         self._lock: Lockfile | None = None
@@ -122,6 +156,7 @@ class RiotClient:
         self.glz_region: str | None = None
         self.shard: str | None = None
         self.version: str | None = None
+        self._version_checked = 0.0
         self.rate_limited_until = 0.0
 
     @property
@@ -147,6 +182,12 @@ class RiotClient:
                 self._refresh_tokens()
             if not self.shard:
                 self._detect_region()
+            if time.time() - self._version_checked > 60:
+                self._version_checked = time.time()
+                found = game_log_version(self.log_path)
+                if found and found != self.version and newer_version(found, self.version):
+                    log.info("Version du client Valorant : %s", found)
+                    self.version = found
             return True
         except (OSError, NotRunning, ValueError) as exc:
             log.debug("Riot Client unavailable: %s", exc)
@@ -207,13 +248,19 @@ class RiotClient:
         except ValueError:
             return None
 
+    def _client_version(self) -> str | None:
+        """The most recent version we know: the game's own log beats valorant-api.com, which lags after patches."""
+        if self.version and (not self.fallback_version or newer_version(self.version, self.fallback_version)):
+            return self.version
+        return self.fallback_version or self.version
+
     def _headers(self) -> dict:
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "X-Riot-Entitlements-JWT": self.entitlement or "",
             "X-Riot-ClientPlatform": CLIENT_PLATFORM,
         }
-        version = self.version or self.fallback_version
+        version = self._client_version()
         if version:
             headers["X-Riot-ClientVersion"] = version
         return headers
@@ -280,9 +327,9 @@ class RiotClient:
     def mmr(self, puuid: str):
         return self._remote("GET", self.pd(f"/mmr/v1/players/{puuid}"))
 
-    def competitive_updates(self, count: int = 20):
+    def competitive_updates(self, count: int = 20, puuid: str | None = None):
         return self._remote(
-            "GET", self.pd(f"/mmr/v1/players/{self.puuid}/competitiveupdates?startIndex=0&endIndex={count}&queue=competitive")
+            "GET", self.pd(f"/mmr/v1/players/{puuid or self.puuid}/competitiveupdates?startIndex=0&endIndex={count}&queue=competitive")
         )
 
     def match_history(self, start: int = 0, end: int = 20, puuid: str | None = None):

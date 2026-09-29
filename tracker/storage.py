@@ -30,6 +30,7 @@ V1_ONLY = ("processed_matches", "agents", "skins", "player_stats")
 class Store:
     def __init__(self, directory: str):
         self.dir = directory
+        self.owner: str | None = None  # puuid of the account this database belongs to
         self.lock = threading.RLock()
         self.data: dict = {name: factory() for name, factory in COLLECTIONS.items()}
         self._dirty: set[str] = set()
@@ -198,3 +199,96 @@ def migrate_v1(data: dict, old: dict) -> None:
         if name in ("Hors Ligne", "Joueur", "Moi"):
             name, tag = "", ""
         data["profile"] = {"name": name, "tag": tag, "level": profile.get("level"), "rank": {"tier": profile.get("rank", 0)}}
+
+
+class Accounts:
+    """One database per Riot account: <root>/accounts/<puuid>/. Older single-account layouts
+    (JSON files directly in <root>) are moved into the folder of the account they belong to."""
+
+    def __init__(self, root: str):
+        self.root = root
+        self.dir = os.path.join(root, "accounts")
+        os.makedirs(self.dir, exist_ok=True)
+
+    # -- layout helpers
+    def _flat_present(self) -> bool:
+        names = [f"{n}.json" for n in COLLECTIONS] + [f"{n}.json" for n in V1_ONLY] + ["database.json"]
+        return any(os.path.exists(os.path.join(self.root, n)) for n in names if n != "meta.json") or \
+            os.path.exists(os.path.join(os.path.dirname(os.path.abspath(self.root)), "database.json"))
+
+    def _flat_owner(self) -> str | None:
+        try:
+            with open(os.path.join(self.root, "profile.json"), encoding="utf-8") as f:
+                return (json.load(f).get("puuid") or "").lower() or None
+        except (OSError, ValueError):
+            return None
+
+    def _adopt_flat(self, puuid: str) -> None:
+        """Move a legacy single-account database into this account's folder."""
+        target = os.path.join(self.dir, puuid)
+        os.makedirs(target, exist_ok=True)
+        # v1 kept everything in a database.json next to the db folder: Store's migration looks for it
+        # next to the account folder, i.e. in accounts/.
+        legacy_single = os.path.join(os.path.dirname(os.path.abspath(self.root)), "database.json")
+        if os.path.exists(legacy_single):
+            shutil.move(legacy_single, os.path.join(self.dir, "database.json"))
+        for entry in os.listdir(self.root):
+            path = os.path.join(self.root, entry)
+            if entry == "accounts" or entry in ("content-cache.json", "tracker.log", "instance.lock", "instance.json", "last_account.txt"):
+                continue
+            if entry.endswith(".json") or entry.startswith("backup-v1-") or entry.endswith(".bak") or ".corrupt-" in entry:
+                shutil.move(path, os.path.join(target, entry))
+        log.info("Base existante rattachée au compte %s", puuid[:8])
+
+    def _remember(self, puuid: str) -> None:
+        try:
+            with open(os.path.join(self.root, "last_account.txt"), "w", encoding="utf-8") as f:
+                f.write(puuid)
+        except OSError:
+            pass
+
+    # -- public API
+    def open(self, puuid: str) -> Store:
+        puuid = puuid.lower()
+        target = os.path.join(self.dir, puuid)
+        if not os.path.isdir(target) and self._flat_present():
+            owner = self._flat_owner()
+            if owner in (None, puuid):
+                self._adopt_flat(puuid)
+        store = Store(target)
+        store.owner = puuid
+        self._remember(puuid)
+        return store
+
+    def initial(self) -> Store:
+        """Store to show before the Riot Client tells us who is logged in."""
+        owner = self._flat_owner()
+        if owner and self._flat_present():
+            return self.open(owner)
+        try:
+            with open(os.path.join(self.root, "last_account.txt"), encoding="utf-8") as f:
+                last = f.read().strip()
+            if last and os.path.isdir(os.path.join(self.dir, last)):
+                return self.open(last)
+        except OSError:
+            pass
+        if self._flat_present():
+            store = Store(self.root)  # legacy data of an unknown account, adopted on first connection
+            store.owner = None
+            return store
+        store = Store(os.path.join(self.dir, "_waiting"))
+        store.owner = None
+        return store
+
+    def list(self) -> list[dict]:
+        out = []
+        for puuid in sorted(os.listdir(self.dir)):
+            if puuid.startswith("_"):
+                continue
+            try:
+                with open(os.path.join(self.dir, puuid, "profile.json"), encoding="utf-8") as f:
+                    prof = json.load(f)
+            except (OSError, ValueError):
+                prof = {}
+            out.append({"puuid": puuid, "name": prof.get("name"), "tag": prof.get("tag")})
+        return out
