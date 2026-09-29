@@ -4,9 +4,10 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import secrets
 import uuid
 
-from flask import Flask, Response, abort, request, send_from_directory
+from flask import Flask, Response, abort, request, send_from_directory, session
 
 from . import __version__
 from .worker import Tracker
@@ -18,6 +19,11 @@ def create_app(tracker: Tracker, static_dir: str, hooks: dict | None = None) -> 
     """``hooks`` lets the desktop shell react to the page: {"show": fn, "overlay_hide": fn}."""
     hooks = hooks if hooks is not None else {}
     app = Flask(__name__, static_folder=None)
+    # Random per-process values: nobody outside this running instance can guess them, unlike
+    # a hardcoded header value baked into the source.
+    app.secret_key = secrets.token_hex(32)
+    ipc_secret = secrets.token_hex(16)
+    app.config["IPC_SECRET"] = ipc_secret
     # Version counters restart at 0 with the process: prefix ETags so browser caches never collide.
     boot = uuid.uuid4().hex[:8]
 
@@ -50,9 +56,14 @@ def create_app(tracker: Tracker, static_dir: str, hooks: dict | None = None) -> 
         host = (request.host or "").rsplit(":", 1)[0]
         if host not in ALLOWED_HOSTS:
             abort(403)
-        # Mutating endpoints must come from our own page.
-        if request.method == "POST" and request.headers.get("X-Tracker") != "1":
-            abort(403)
+        # Loading our own page hands the browser a signed, per-process session cookie.
+        if request.method == "GET" and request.path in ("/", "/overlay"):
+            session["tracker"] = True
+        # Mutating endpoints need that session, or (for our own desktop IPC) the random
+        # per-process token — never a value that's hardcoded and visible in the source.
+        if request.method == "POST" and not session.get("tracker"):
+            if not secrets.compare_digest(request.headers.get("X-Tracker", ""), ipc_secret):
+                abort(403)
 
     @app.after_request
     def security_headers(res: Response):

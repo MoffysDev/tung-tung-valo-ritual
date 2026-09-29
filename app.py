@@ -219,7 +219,7 @@ def main() -> None:
     hooks: dict = {}
     app = create_app(tracker, os.path.join(BUNDLE, "static"), hooks)
     server = make_server("127.0.0.1", port, app, threaded=True)
-    instance.publish(port)
+    instance.publish(port, app.config["IPC_SECRET"])
     url = f"http://127.0.0.1:{port}"
     log.info("Tung Tung Tracker v%s -> %s", __version__, url)
 
